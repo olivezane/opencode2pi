@@ -1,0 +1,6 @@
+# pi installs git packages with pnpm; pnpm 11 hard-errors (strictDepBuilds)
+# on unreviewed build scripts. Neither script is needed at runtime (inherited
+# from upstream opencode2dsh's same fix).
+allowBuilds:
+  '@google/genai': false
+  protobufjs: false
