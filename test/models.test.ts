@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { decodeModelsDevMeta, toPiModels, zenBaseUrl, PROVIDER_ID } from '../src/models.ts'
+import { PROVIDER_ID, ZEN_V1, decodeModelsDevMeta, toPiModels } from '../src/models.ts'
 
 // Real models.dev api.json shape (opencode section), trimmed.
 const payload = {
@@ -51,7 +51,7 @@ test('toPiModels builds complete pi models, defaulting what metadata lacks', () 
   assert.equal(qwen.name, 'Qwen3 Coder Next')
   assert.equal(qwen.api, 'openai-completions')
   assert.equal(qwen.provider, PROVIDER_ID)
-  assert.equal(qwen.baseUrl, zenBaseUrl())
+  assert.equal(qwen.baseUrl, ZEN_V1)
   assert.equal(qwen.baseUrl, 'https://opencode.ai/zen/v1')
   assert.equal(qwen.reasoning, true)
   assert.deepEqual(qwen.input, ['text', 'image'])

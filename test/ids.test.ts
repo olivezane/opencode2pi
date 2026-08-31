@@ -50,7 +50,7 @@ test('deriveRequestIDs keeps the session stable across turns and randomizes requ
   assert.notEqual(first.request, second.request)
   assert.equal(first.project, second.project)
   assert.ok(first.project.startsWith('prj_'))
-  assert.equal(first.parentSession, '')
+  assert.ok(!('parentSession' in first), 'parentSession was dead weight; the ids are session/request/project only')
   // fallback: no user content at all still yields usable ids
   const empty = deriveRequestIDs([{ role: 'system', content: 'only system' }])
   assert.ok(empty.session.startsWith('ses_'))

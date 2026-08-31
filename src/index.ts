@@ -17,7 +17,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.ts'
 import { deriveRequestIDs, disguiseHeaders } from './ids.ts'
-import { ANONYMOUS_KEY, PROVIDER_ID, PROVIDER_NAME, decodeModelsDevMeta, toPiModels, zenBaseUrl } from './models.ts'
+import { ANONYMOUS_KEY, PROVIDER_ID, PROVIDER_NAME, ZEN_V1, decodeModelsDevMeta, toPiModels } from './models.ts'
 
 /**
  * opencode2pi pi extension entry.
@@ -87,7 +87,7 @@ function buildProvider(cat: ModelCatalog): Provider<Api> {
   return createProvider<Api>({
     id: PROVIDER_ID,
     name: PROVIDER_NAME,
-    baseUrl: zenBaseUrl(),
+    baseUrl: ZEN_V1,
     auth: {
       apiKey: {
         name: 'OpenCode Zen anonymous lane (no key)',

@@ -11,7 +11,6 @@ export interface RequestIDs {
   session: string
   request: string
   project: string
-  parentSession: string
 }
 
 /** sha256("prefix\0value") truncated to 12 bytes: stable, non-reversible. */
@@ -22,14 +21,6 @@ export function stableID(prefix: string, value: string): string {
 
 export function randomID(prefix: string, size: number): string {
   return `${prefix}_${randomBytes(size).toString('hex')}`
-}
-
-export function firstString(...values: Array<string | undefined>): string {
-  for (const value of values) {
-    const trimmed = value?.trim()
-    if (trimmed) return trimmed
-  }
-  return ''
 }
 
 /**
@@ -57,7 +48,6 @@ export function deriveRequestIDs(messages: Array<{ role: string; content: unknow
     session: stableID('ses', signal),
     request: randomID('req', 16),
     project: stableID('prj', 'opencode2pi:default-project'),
-    parentSession: '',
   }
 }
 

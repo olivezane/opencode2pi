@@ -1,7 +1,6 @@
 {
   "name": "opencode2pi",
   "version": "0.1.0",
-  "private": false,
   "description": "Free OpenCode Zen models for pi: anonymous lane as a native provider, no API key.",
   "type": "module",
   "license": "MIT",

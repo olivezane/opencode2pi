@@ -23,15 +23,6 @@ export const staticFreeModels: string[] = [
   'mimo-v2.5-free', // verified 2026-08-28: anonymous chat 200 (non-stream)
 ]
 
-/** Exposed by /v1/models but without a verified anonymous chat yet. */
-export const staticFreeCandidates: string[] = [
-  // 'deepseek-v4-flash-free',          // 2026-08-28: upstream "Model is unavailable"
-  // 'nemotron-3-ultra-free',           // 2026-08-28: upstream server_error payload
-  // 'laguna-s-2.1-free',               // 2026-08-28: upstream 503 provider error
-  // 'nemotron-3.5-lightning-free',     // 2026-08-28: 502 after all attempts
-  // 'muse-spark-1.2-contributor-free', // 2026-08-28: 502 after all attempts
-]
-
 export function isFreeModel(model: string): boolean {
   return model.toLowerCase().includes('free')
 }
@@ -71,21 +62,21 @@ export function decide(model: string, prices: Map<string, ModelPrice>, ready: bo
 }
 
 /**
- * decodeModelsDev (model_metadata.go:253-335): use the OpenCode provider
- * section of models.dev, preferring the exact `opencode`/`opencode-zen` key.
+ * Walk the OpenCode provider section of the models.dev payload
+ * (model_metadata.go:253-335): prefer the exact `opencode`/`opencode-zen`
+ * key, then any key containing "opencode" whose identity matches; visit each
+ * model exactly once and stop after the first section that yielded one.
  */
-export function decodeModelsDev(data: unknown): Map<string, ModelPrice> {
-  const result = new Map<string, ModelPrice>()
-  if (!data || typeof data !== 'object') return result
+export function forModelsDev(data: unknown, visit: (modelId: string, raw: Record<string, unknown>) => void): void {
+  if (!data || typeof data !== 'object') return
   const providers = data as Record<string, { models?: Record<string, Record<string, unknown>>; id?: unknown; name?: unknown }>
-  const keys = Object.keys(providers)
   const rank = (key: string): number => {
     const lower = key.toLowerCase()
     if (lower === 'opencode' || lower === 'opencode-zen' || lower === 'opencode_zen') return 0
     if (lower.includes('opencode')) return 1
     return 2
   }
-  keys.sort((left, right) => {
+  const keys = Object.keys(providers).sort((left, right) => {
     const leftRank = rank(left)
     const rightRank = rank(right)
     if (leftRank !== rightRank) return leftRank - rightRank
@@ -101,20 +92,30 @@ export function decodeModelsDev(data: unknown): Map<string, ModelPrice> {
     }
     const models = provider.models
     if (!models || typeof models !== 'object') continue
+    let visited = 0
     for (const [modelKey, raw] of Object.entries(models)) {
       if (!raw || typeof raw !== 'object') continue
       const modelId = typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : modelKey
-      const cost = (raw.cost ?? {}) as Record<string, unknown>
-      const num = (value: unknown): number | undefined =>
-        typeof value === 'number' && Number.isFinite(value) ? value : undefined
-      result.set(modelId, {
-        input: num(cost.input),
-        output: num(cost.output),
-        deprecated: metadataDeprecated(raw),
-      })
+      visit(modelId, raw)
+      visited += 1
     }
-    if (result.size > 0) return result
+    if (visited > 0) return
   }
+}
+
+/** decodeModelsDev (model_metadata.go:253-335): prices for the free decision. */
+export function decodeModelsDev(data: unknown): Map<string, ModelPrice> {
+  const result = new Map<string, ModelPrice>()
+  forModelsDev(data, (modelId, raw) => {
+    const cost = (raw.cost ?? {}) as Record<string, unknown>
+    const num = (value: unknown): number | undefined =>
+      typeof value === 'number' && Number.isFinite(value) ? value : undefined
+    result.set(modelId, {
+      input: num(cost.input),
+      output: num(cost.output),
+      deprecated: metadataDeprecated(raw),
+    })
+  })
   return result
 }
 
