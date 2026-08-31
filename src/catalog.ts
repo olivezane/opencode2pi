@@ -18,9 +18,23 @@ export const ZEN_BASE_URL = 'https://opencode.ai/zen'
 
 /** Verified against the anonymous lane with a real chat (agent/internal/catalog/static_models.go). */
 export const staticFreeModels: string[] = [
-  'big-pickle', // verified 2026-08-28: anonymous chat 200 (non-stream + stream)
-  'hy3-free', // verified 2026-08-28: anonymous chat 200 (non-stream)
-  'mimo-v2.5-free', // verified 2026-08-28: anonymous chat 200 (non-stream)
+  'big-pickle', // verified 2026-08-31: anonymous chat 200
+  'ling-3.0-flash-fin-free', // verified 2026-08-31: anonymous chat 200
+  'mimo-v2.5-free', // verified 2026-08-31: anonymous chat 200
+  'nemotron-3-ultra-free', // verified 2026-08-31: anonymous chat 200
+]
+
+/**
+ * Probe ledger: exposed by /v1/models (and often free-named or priced 0 on
+ * models.dev) but the anonymous lane fails on them. Banned from exposure —
+ * re-probe before removing an entry; add with date + status code.
+ */
+export const staticUnavailable: string[] = [
+  'deepseek-v4-flash-free', // 2026-08-31: 400 "Model is unavailable" (also 2026-08-28)
+  'muse-spark-1.2-contributor-free', // 2026-08-31: 500 internal (2026-08-28: 502)
+  'laguna-s-2.1-free', // 2026-08-31: 503 (also 2026-08-28)
+  'nemotron-3.5-lightning-free', // 2026-08-31: timeout (2026-08-28: 502 after all attempts)
+  'hy3-free', // 2026-08-31: removed from upstream /v1/models
 ]
 
 export function isFreeModel(model: string): boolean {
@@ -264,6 +278,9 @@ export class ModelCatalog {
   }
 
   decision(model: string): AnonymousDecision {
+    if (staticUnavailable.includes(model)) {
+      return { allowed: false, source: 'static_banned', known: true }
+    }
     const metadata = decide(model, this.#prices, this.#pricesReady)
     if (!metadata.allowed && !metadata.known && staticFreeModels.includes(model)) {
       return { allowed: true, source: 'static_verified', known: false }

@@ -169,3 +169,20 @@ test('ModelCatalog falls back to static ids while the live catalog is pending', 
   assert.equal(catalog.snapshot().status, 'pending')
   catalog.stop()
 })
+
+test('ids the anonymous lane fails on are banned from exposure', async () => {
+  const catalog = new ModelCatalog({
+    fetchImpl: fakeFetch({
+      'https://opencode.ai/zen/v1/models': { data: [{ id: 'deepseek-v4-flash-free' }, { id: 'big-pickle' }] },
+      'https://models.dev/api.json': metadataBody,
+    }),
+  })
+  try {
+    await catalog.refreshOnce()
+    assert.equal(catalog.decision('deepseek-v4-flash-free').allowed, false, '400 upstream: banned despite name_free')
+    assert.equal(catalog.decision('deepseek-v4-flash-free').source, 'static_banned')
+    assert.deepEqual(catalog.list(), ['big-pickle'])
+  } finally {
+    catalog.stop()
+  }
+})

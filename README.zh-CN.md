@@ -111,6 +111,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 | 症状 | 可能原因与处理 |
 | --- | --- |
 | 只有 3 个模型 | 启动拉取撞上网络未就绪；重试约 1 分钟内落地。看 `adapter-status.json` 的 `lastError`。 |
+| 列表看起来很短 | 匿名通道只服务免费子集（付费模型一律 401）——这就是全部目录，不是 bug。匿名通道带不动的 id 经探针台账（`src/catalog.ts` 的 `staticUnavailable`）禁用。 |
 | `lastError: "fetch failed"` 持续 | 到 `opencode.ai` 的出站 HTTPS 被阻断；检查代理/VPN 规则。 |
 | 聊天中报限流错误 | 匿名通道按 IP 限额；换网络节点或稍等。 |
 

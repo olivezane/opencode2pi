@@ -120,6 +120,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 | Symptom | Likely cause & fix |
 | --- | --- |
 | Only 3 models | Startup fetch raced your network; retries land within ~1 min. Check `adapter-status.json` for `lastError`. |
+| The list looks short | The anonymous lane only serves the free subset (paid models answer 401) — that is the whole catalog, not a bug. Ids the lane fails on are banned via the probe ledger (`staticUnavailable` in `src/catalog.ts`). |
 | `lastError: "fetch failed"` persisting | Outbound HTTPS to `opencode.ai` blocked; check proxy/VPN rules. |
 | Rate-limit errors in chat | The anonymous lane is quota-per-IP; switch network node or wait. |
 
