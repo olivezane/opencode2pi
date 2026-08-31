@@ -133,9 +133,9 @@ export interface CatalogSnapshot {
 }
 
 export interface CatalogOptions {
-  /** S1 refresh cadence; the agent config uses models.refresh_seconds. */
+  /** S1 refresh cadence. */
   refreshSeconds?: number
-  /** Where the models.dev cache lives (agent data dir). */
+  /** Where the models.dev cache lives (data dir). */
   cachePath?: string
   /** Upstream override for tests. */
   zenBaseUrl?: string
@@ -172,6 +172,8 @@ export class ModelCatalog {
   #stopped = false
   #onRefresh?: (status: CatalogSnapshot, lastError: string) => void
   #startupRetryMs: number
+  /** Raw models.dev provider payload, for full model metadata (src/models.ts). */
+  #rawMetadata: unknown = null
 
   constructor(options: CatalogOptions = {}) {
     this.#refreshSeconds = options.refreshSeconds ?? 300
@@ -244,6 +246,7 @@ export class ModelCatalog {
       if (prices.size === 0) throw new Error('models.dev contains no OpenCode model metadata')
       this.#prices = prices
       this.#pricesReady = true
+      this.#rawMetadata = data
       if (this.#cachePath) await saveMetadataCache(this.#cachePath, prices, this.#now())
     } catch (err) {
       // Network failure with a cached copy is not fatal: load the cache.
@@ -267,7 +270,7 @@ export class ModelCatalog {
     return metadata
   }
 
-  /** ids exposed to DSH: S1 ∩ allowed, or S3 while the live catalog is pending. */
+  /** ids exposed to the picker: S1 ∩ allowed, or S3 while the live catalog is pending. */
   list(): string[] {
     if (this.#zen.size === 0) return [...staticFreeModels]
     const out: string[] = []
@@ -277,7 +280,6 @@ export class ModelCatalog {
     return out.sort()
   }
 
-  /** healthz models block (design.md 6.1). */
   snapshot(): CatalogSnapshot {
     const age = this.#updatedAt === 0 ? Infinity : this.#now() - this.#updatedAt
     const stale = this.#updatedAt !== 0 && age > 10 * 60 * 1000
@@ -291,6 +293,11 @@ export class ModelCatalog {
 
   get lastError(): string {
     return this.#lastError
+  }
+
+  /** The raw models.dev JSON from the last successful fetch (null while pending/restored-from-cache). */
+  get rawMetadata(): unknown {
+    return this.#rawMetadata
   }
 }
 
@@ -352,7 +359,7 @@ async function loadMetadataCache(path: string): Promise<Map<string, ModelPrice>>
   return new Map(raw.prices)
 }
 
-/** Default cache location next to the agent data dir (config.ts convention). */
+/** Default models.dev cache location in the data dir. */
 export function defaultCachePath(dataDir: string): string {
-  return join(dataDir, 'agent-config.json.models.dev.json')
+  return join(dataDir, 'models-dev-cache.json')
 }

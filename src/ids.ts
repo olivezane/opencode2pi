@@ -4,7 +4,7 @@ import { createHash, randomBytes } from 'node:crypto'
  * Port of agent/internal/ids (opencode2api ids.go, verbatim semantics):
  * stable session/project ids derived from the conversation's first user turn,
  * and a per-request random id. The upstream sees CLI-identical correlation
- * headers built from these (zen-adapter.ts).
+ * headers built from these (index.ts).
  */
 
 export interface RequestIDs {
@@ -47,8 +47,8 @@ export function conversationSeed(messages: Array<{ role: string; content: unknow
 }
 
 /**
- * Derive the correlation ids for one upstream request. In adapter mode there
- * are no inbound opencode headers, so the seed is the conversation itself.
+ * Derive the correlation ids for one upstream request. The seed is the
+ * conversation itself (pi hands us the full context per request).
  */
 export function deriveRequestIDs(messages: Array<{ role: string; content: unknown }>): RequestIDs {
   let signal = conversationSeed(messages)
@@ -56,7 +56,7 @@ export function deriveRequestIDs(messages: Array<{ role: string; content: unknow
   return {
     session: stableID('ses', signal),
     request: randomID('req', 16),
-    project: stableID('prj', 'opencode2dsh:default-project'),
+    project: stableID('prj', 'opencode2pi:default-project'),
     parentSession: '',
   }
 }
@@ -68,7 +68,7 @@ export function opencodeUserAgent(): string {
 
 /**
  * The full disguise header set sent with every upstream request
- * (design.md 2.4; gateway.go newUpstreamRequest:640-669).
+ * (gateway.go newUpstreamRequest:640-669).
  */
 export function disguiseHeaders(ids: RequestIDs): Record<string, string> {
   return {

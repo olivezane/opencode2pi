@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { conversationSeed, deriveRequestIDs, disguiseHeaders, opencodeUserAgent, randomID, stableID } from '../src/adapter/ids.ts'
+import { conversationSeed, deriveRequestIDs, disguiseHeaders, opencodeUserAgent, randomID, stableID } from '../src/ids.ts'
 
 test('stableID is deterministic and sha256-truncated', () => {
   const first = stableID('ses', 'hello')

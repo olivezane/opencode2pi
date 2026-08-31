@@ -1,15 +1,14 @@
 <div align="center">
 
-# opencode2dsh
+# opencode2pi
 
-**在 DSH（DeepSeek Harness）里原生使用 OpenCode Zen 的免费匿名模型。**
+**在 [pi](https://pi.dev) 里原生使用 OpenCode Zen 免费模型。**
 
-无需 API Key。无需注册。无需额外进程。
+无需 API key。无需注册。无需额外进程。
 
-[![npm](https://img.shields.io/npm/v/@opencode2dsh%2Fdsh-plugin)](https://www.npmjs.com/package/@opencode2dsh/dsh-plugin)
-[![license](https://img.shields.io/npm/l/@opencode2dsh%2Fdsh-plugin)](https://github.com/FishBottle7/opencode2dsh/blob/master/LICENSE)
+[![license](https://img.shields.io/npm/l/opencode2pi)](./LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](https://nodejs.org)
-[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-plugin-blue)](https://github.com/FishBottle7/opencode2dsh)
+[![pi](https://img.shields.io/badge/pi-package-blue)](https://pi.dev/packages)
 
 [English](README.md) | 简体中文
 
@@ -17,163 +16,135 @@
 
 ---
 
-opencode2dsh 会向 DSH 注册一个原生的 `LlmAdapter`，直接流式对接
-[OpenCode Zen](https://opencode.ai/zen) 的**匿名免费通道**——也就是
-OpenCode 官方 CLI 无需登录即可使用的那批免费模型，它们会以 `opencode2dsh`
-这个常规 provider 出现在你的 DSH 模型选择器里。
+opencode2pi 是一个 [pi package](https://pi.dev/packages)，它注册一个原生 pi
+provider，直连 [OpenCode Zen](https://opencode.ai/zen) 的**匿名免费通道**——
+与 OpenCode 官方 CLI 免登录使用的同一批模型，在你的模型选择器里以
+`opencode2pi` 这个普通 provider 出现。
 
-插件发出的请求与 OpenCode CLI 的流量完全同形（相同的 User-Agent、相同的
-关联请求头），模型目录通过三级回退链保持新鲜。不用登录任何账号，也不用
-自己部署任何东西。
+请求离开你的机器时与 OpenCode CLI 的流量别无二致（相同的 user agent、相同的
+关联头），模型目录通过三级 fallback 链保持新鲜。无需登录任何东西，也无需
+托管任何东西。
 
 ## 特性
 
-- **零凭据、零配置**——匿名通道不需要任何 Key；装好、重启、开聊
-- **原生 adapter，无 sidecar**——一个 npm 包，没有子进程、没有二进制、没有本地端口（旧版 Go sidecar 不随包发行，见 `legacy/`）
-- **CLI 同形伪装**——请求携带 OpenCode CLI 的 User-Agent 和整套会话/请求/项目关联头，按会话派生
-- **实时目录 + 三级回退**——上游实时列表 ∩ 元数据判定免费，断网时依次回退到磁盘缓存与已验证的静态名单
-- **自愈能力**——启动期快速重试、周期刷新，并落盘健康快照便于排查
-- **规范的错误呈现**——上游故障（限流、鉴权、超时、传输）以分类的 finish 原因送达 DSH，重试策略始终由 DSH 掌控
+- **零凭据、零配置**——匿名通道无需 key；装好、重启、开聊
+- **原生 provider，无 sidecar**——单包搞定，无子进程、无二进制、无本地端口
+- **CLI 同源伪装**——请求携带 OpenCode CLI 的 user agent 与 session/request/project 关联头，按会话派生
+- **实时目录 + fallback 链**——上游实时列表 ∩ 元数据免费判定，退化为离线缓存与已验证静态清单
+- **真实模型元数据**——上下文窗口、输出上限、模态与（为零的）价格来自 models.dev，pi 的 compaction 与费用统计因而是准的
+- **规范的错误面**——上游故障以分类后的 pi 流错误呈现
 
 ## 安装
 
-**从插件市场安装**（推荐，收录后可用）：在 DSH 里打开 **设置 → 插件市场**，
-搜索 `opencode2dsh`，一键安装。
-
-**从 npm 安装**：
+通过 pi 从本 git 仓库安装（不发布 npm 包——仓库即发布物，版本即 git tag）：
 
 ```sh
-dsh plugin --profile web add @opencode2dsh/dsh-plugin
+pi install git:github.com/olivezane/opencode2pi
 ```
 
-**从源码安装**（自行打包）：
+免安装试用：
 
 ```sh
-git clone https://github.com/FishBottle7/opencode2dsh.git
-cd opencode2dsh/packages/plugin
-pnpm install && pnpm pack
-dsh plugin --profile web add ./opencode2dsh-dsh-plugin-<version>.tgz
+pi -e git:github.com/olivezane/opencode2pi
 ```
 
-**验证**：重启 `dsh web`，打开模型选择器，在 **opencode2dsh** 分组里选模型即可。
+**验证**：启动 `pi`，打开模型选择器（`/model`），从 **OpenCode Zen (free)**
+分组里挑一个模型。
 
-需要带 web profile 的 DSH（DeepSeek Harness）；Node.js ≥ 20（DSH 能跑就满足）；
-出站 HTTPS 需可达 `opencode.ai` 与 `models.dev`。
+依赖 pi；Node.js ≥ 20（pi 能跑就一定有）；到 `opencode.ai` 与 `models.dev`
+的出站 HTTPS。
+
+升级用 `pi update --extensions`。
 
 ## 配置
 
-默认配置开箱即用。需要覆盖时，编辑 profile 的 `cordis.patch.yml`：
+没有配置。没有选项、没有环境变量、没有设置键——默认即开即用。provider id
+是 `opencode2pi`，目录每 300 秒刷新一次，不改 `src/` 你也就只能这样。
 
-```yaml
-- id: opencode2dsh
-  name: '@opencode2dsh/dsh-plugin'
-  config:
-    mode: adapter        # adapter（默认）| sidecar
-    providerId: opencode2dsh
-    refreshSeconds: 300  # 目录刷新周期（秒）
-```
+状态数据在 `~/.opencode2pi/`：
 
-| 配置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `mode` | `adapter` | `adapter`：原生 LlmAdapter 直连 Zen。`sidecar`：旧版本地 agent 模式，不随包发行——请从 `legacy/agent` 自行构建并通过 `agentPath` 指定。 |
-| `providerId` | `opencode2dsh` | 在 DSH 中显示的 provider 名称。 |
-| `refreshSeconds` | `300` | 实时目录刷新间隔；定价元数据每 24 小时刷新。 |
-| `agentPath` | 自动解析 | 仅 sidecar：agent 二进制路径。 |
-| `agentArgs` | — | 仅 sidecar：传给 agent 的额外 CLI 参数。 |
-| `restartDelayMs` / `restartMaxDelayMs` / `maxConsecutiveCrashes` | `1000` / `60000` / `5` | 仅 sidecar：重启退避与熔断阈值。 |
+| 文件 | 用途 |
+| --- | --- |
+| `models-dev-cache.json` | models.dev 元数据缓存（约 7 天 TTL），供 fallback 链使用 |
+| `adapter-status.json` | 每轮刷新后写入的健康快照 |
 
 ## 工作原理
 
 ```
-DSH 会话
-   │  harness chunk（block-start / text-delta / usage / finish …）
+pi 会话
+   │  pi-ai Context（原生，无转换）
    ▼
-ZenAdapter（注册的 LlmAdapter）
-   │  pi-ai openai-completions 流式
+pi 扩展 (src/index.ts) —— 注册 provider "opencode2pi"
+   │  pi-ai openai-completions 流
+   │  + CLI 同源请求头：
+   │    user-agent: opencode/…
+   │    x-opencode-client, x-opencode-session, x-session-affinity,
+   │    X-Session-Id, x-opencode-request, x-opencode-project
    ▼
 https://opencode.ai/zen/v1        ← Authorization: Bearer public
-   携带与 CLI 同形的请求头：
-     user-agent: opencode/…
-     x-opencode-client, x-opencode-session, x-session-affinity,
-     X-Session-Id, x-opencode-request, x-opencode-project
 ```
 
-- **会话关联**——session/project id 由会话首条用户消息经 SHA-256 派生
-  （同一会话稳定、不可逆推），每个请求再附带一个全新的随机 id，与 CLI 行为一致。
-- **目录回退链**——S1：实时 `GET /v1/models`；S2：models.dev 定价元数据判定
-  "免费"；S3：编译期验证的静态名单。上游故障时由磁盘缓存（约 7 天有效期）兜底。
-- **韧性**——adapter 在启动时立即注册；若首次目录拉取撞上网络尚未就绪
-  （VPN/TUN 重连、DNS 等），会以短周期重试（约 1 分钟内），随后转入常规刷新。
-- **sidecar 模式**（`mode: sidecar`，旧版）——拉起本地 Go agent（
-  [opencode2api](https://github.com/jasonxu114514/opencode2api) 的单租户移植版），
-  监听 `127.0.0.1:<随机端口>`、token 鉴权，并注册标准 `llm-pi-ai` 路由。
-  **不随包发行**；请从 `legacy/agent` 构建（`go build ./cmd/agent`）并把
-  `agentPath` 指向产物。
+- **会话关联**——session/project id 由会话首条用户消息 SHA-256 派生（会话内
+  稳定、不可逆），每个请求另带新鲜随机 id，与 CLI 行为一致。
+- **注册模型**（[ADR 0001](docs/adr/0001-static-list-at-startup-background-catalog-refresh.md)）
+  ——扩展先注册已验证的静态清单，选择器永不空、启动永不因网络阻塞；实时目录
+  后台刷新并原地替换模型列表。
+- **目录 fallback 链**——S1：实时 `GET /v1/models`；S2：models.dev 价格元数据
+  判定"免费"；S3：编译期验证过的静态清单。磁盘缓存（约 7 天 TTL）兜底上游故障。
+- **模型元数据**——上下文窗口、输出上限、reasoning、图片输入与价格从同一份
+  models.dev payload 解析（免费判定也用它）；无元数据的模型保持保守默认值。
 
-## 健康状态与排查
+## 健康与排障
 
-插件在每轮刷新后写入健康快照：
-
-```
-~/.opencode2dsh/adapter-status.json
-```
+`~/.opencode2pi/adapter-status.json` 每轮刷新后重写：
 
 ```json
 {
   "status": "ready",
-  "total": 64,
-  "exposed": 9,
+  "total": 63,
+  "exposed": 8,
   "lastError": "",
-  "writtenAt": "2026-08-29T07:01:54.915Z"
+  "writtenAt": "2026-08-31T15:26:58.409Z"
 }
 ```
 
-| 现象 | 可能原因与处理 |
+| 症状 | 可能原因与处理 |
 | --- | --- |
-| 只有 3 个模型 | 启动时网络未就绪，重试会在约 1 分钟内补齐；看 `adapter-status.json` 里的 `lastError`。 |
-| `lastError: "fetch failed"` 持续出现 | 出站 HTTPS 到 `opencode.ai` 被拦截；检查代理/VPN 规则。 |
-| 对话中报限流错误 | 匿名通道按 IP 限额；切换网络节点或稍后再试。 |
-| 连接 `127.0.0.1:*` 报错 | 残留的 sidecar 路由遮蔽了 adapter；插件 ≥ 0.2.1 启动时会自动清理。 |
-| 安装时报 `ERR_PNPM_IGNORED_BUILDS` | `pi-ai` 的传递依赖（`@google/genai`、`protobufjs`）带构建脚本，运行时并不需要。在插件市场里按提示选择允许/拒绝，或在 profile 的 `pnpm-workspace.yaml` 的 `allowBuilds:` 下把这两项设为 `false`。 |
+| 只有 3 个模型 | 启动拉取撞上网络未就绪；重试约 1 分钟内落地。看 `adapter-status.json` 的 `lastError`。 |
+| `lastError: "fetch failed"` 持续 | 到 `opencode.ai` 的出站 HTTPS 被阻断；检查代理/VPN 规则。 |
+| 聊天中报限流错误 | 匿名通道按 IP 限额；换网络节点或稍等。 |
 
-## 安全性
+## 安全
 
-- 不涉及任何机密：匿名通道的 Key 就是字面量 `public`；插件不存储任何东西，也没有任何遥测。
-- 安装产物仅限 `lib/`；不执行任何依赖的构建脚本。
-- 所有请求均从你的机器直连 `opencode.ai` / `models.dev`。
+- 不涉及任何秘密：匿名通道的 key 就是字面量 `public`；不存储、不上报遥测。
+- 所有请求从你的机器直达 `opencode.ai` / `models.dev`。
+- 安装前请审查源码——pi 包以完整系统权限运行。
 
 ## 开发
 
 ```sh
-git clone https://github.com/FishBottle7/opencode2dsh.git
-cd opencode2dsh/packages/plugin
-pnpm install
-pnpm typecheck && pnpm test   # 44 个单元测试
-pnpm build                    # 打包到 lib/
+git clone https://github.com/olivezane/opencode2pi.git
+cd opencode2pi
+npm install
+npm run typecheck && npm test
 ```
 
-旧版 Go sidecar 在 `legacy/agent`（`go test ./...`）。架构说明与移植记录见 `docs/`。
+没有构建步骤：pi 直接加载 TypeScript 扩展。fallback 链逻辑（`src/catalog.ts`）
+与 id 派生（`src/ids.ts`）有单元测试；扩展入口用 `pi -e .` 冒烟验证。
 
-发布：在 `packages/plugin` 执行 `pnpm pack`（prepack 会构建并同步文档）。
+架构决策在 `docs/adr/`；项目术语表在 `CONTEXT.md`。
 
 ## 致谢
 
-- [**opencode2api**](https://github.com/jasonxu114514/opencode2api)，作者
-  [@jasonxu114514](https://github.com/jasonxu114514)——`legacy/agent` 里的旧版
-  Go sidecar 是其匿名通道实现的移植版，目录回退链与请求伪装细节同样源自它。
-  本项目能成立，全靠它踩过的路。
-- [OpenCode](https://opencode.ai)——运营免费匿名 Zen 通道。
-- [@earendil-works/pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai)——adapter 模式使用的线上协议层。
-- [DeepSeek Harness](https://www.npmjs.com/package/@deepseek-ai/dsh) 与
-  [dsh-market](https://github.com/dsh-market/dsh-market) 社区。
-
-## 友链
-
-<div align="center">
-
-**[LinuxDo](https://linux.do)** —— 新的理想型社区
-
-</div>
+- [**opencode2dsh**](https://github.com/FishBottle7/opencode2dsh) by
+  [@FishBottle7](https://github.com/FishBottle7)——本项目 fork 自它，从
+  DeepSeek Harness (DSH) 插件 API 改造为 pi。目录 fallback 链、CLI 伪装细节
+  与已验证静态模型清单均继承自该项目。
+- [**opencode2api**](https://github.com/jasonxu114514/opencode2api) by
+  [@jasonxu114514](https://github.com/jasonxu114514)——整个家族的匿名通道
+  实现源头。
+- [OpenCode](https://opencode.ai)——运营免费的匿名 Zen 通道。
+- [@earendil-works/pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai)——底层线材。
 
 ## 许可证
 

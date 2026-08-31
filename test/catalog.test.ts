@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { decodeModelsDev, decide, fetchZenModels, isFreeModel, ModelCatalog, staticFreeModels } from '../src/adapter/catalog.ts'
-import { opencodeUserAgent } from '../src/adapter/ids.ts'
+import { decodeModelsDev, decide, fetchZenModels, isFreeModel, ModelCatalog, staticFreeModels } from '../src/catalog.ts'
+import { opencodeUserAgent } from '../src/ids.ts'
 
 function price(input?: number, output?: number, deprecated = false) {
   return { input, output, deprecated }

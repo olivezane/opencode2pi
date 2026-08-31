@@ -1,13 +1,43 @@
 {
-  "name": "opencode2dsh",
-  "private": true,
-  "description": "Free OpenCode Zen models for DeepSeek Harness (DSH): native dsh-llm adapter plugin, no API key.",
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
+  "name": "opencode2pi",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Free OpenCode Zen models for pi: anonymous lane as a native provider, no API key.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/olivezane/opencode2pi.git"
   },
-  "dependencies": {
-    "@opencode2dsh/dsh-plugin": "^0.2.6"
+  "homepage": "https://github.com/olivezane/opencode2pi#readme",
+  "bugs": "https://github.com/olivezane/opencode2pi/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "pi-package",
+    "opencode",
+    "opencode-zen",
+    "free-models",
+    "free-llm",
+    "llm",
+    "provider"
+  ],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.84.0",
+    "@earendil-works/pi-coding-agent": "^0.84.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
   }
 }
