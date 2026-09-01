@@ -23,7 +23,9 @@
     "provider"
   ],
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
@@ -32,8 +34,8 @@
   "devDependencies": {
     "@earendil-works/pi-ai": "^0.84.0",
     "@earendil-works/pi-coding-agent": "^0.84.0",
-    "@types/node": "^24.0.0",
-    "typescript": "^5.9.0"
+    "@types/node": "^26.4.0",
+    "typescript": "^7.0.2"
   },
   "scripts": {
     "test": "node --test \"test/*.test.ts\"",
