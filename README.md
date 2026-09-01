@@ -16,6 +16,12 @@ English | [简体中文](README.zh-CN.md)
 
 ---
 
+> **Note** — This project is ported and maintained by AI. It works for the
+> maintainers' own setups, but upstream models, APIs and free-lane rules can
+> change at any time — if something breaks or the model data goes stale, we
+> may not get to it right away. Forking is warmly encouraged (MIT — please
+> take it and make it yours); issues and PRs are very welcome too.
+
 opencode2pi is a [pi package](https://pi.dev/packages) that registers a native
 pi provider streaming directly from
 [OpenCode Zen](https://opencode.ai/zen)'s **anonymous free lane** — the same
@@ -42,13 +48,13 @@ Install with pi from this git repository (no npm package — the repo is the
 release; releases are git tags):
 
 ```sh
-pi install git:github.com/olivezane/opencode2pi
+pi install git:@github.com/olivezane/opencode2pi
 ```
 
 To try it without installing:
 
 ```sh
-pi -e git:github.com/olivezane/opencode2pi
+pi -e git:@github.com/olivezane/opencode2pi
 ```
 
 **Verify**: start `pi`, open the model picker (`/model`), and pick a model

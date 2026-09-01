@@ -16,6 +16,11 @@
 
 ---
 
+> **注意** —— 本项目由 AI 移植并维护。它对维护者自己的环境是可用的，但上游
+> 模型、API 和免费通道的规则随时可能变化——如果遇到问题或模型数据没有更新，
+> 我们未必能第一时间处理，欢迎自行 fork（MIT 许可，请随意拿去改）；提 issue
+> 和 PR 也非常欢迎。
+
 opencode2pi 是一个 [pi package](https://pi.dev/packages)，它注册一个原生 pi
 provider，直连 [OpenCode Zen](https://opencode.ai/zen) 的**匿名免费通道**——
 与 OpenCode 官方 CLI 免登录使用的同一批模型，在你的模型选择器里以
@@ -39,13 +44,13 @@ provider，直连 [OpenCode Zen](https://opencode.ai/zen) 的**匿名免费通�
 通过 pi 从本 git 仓库安装（不发布 npm 包——仓库即发布物，版本即 git tag）：
 
 ```sh
-pi install git:github.com/olivezane/opencode2pi
+pi install git:@github.com/olivezane/opencode2pi
 ```
 
 免安装试用：
 
 ```sh
-pi -e git:github.com/olivezane/opencode2pi
+pi -e git:@github.com/olivezane/opencode2pi
 ```
 
 **验证**：启动 `pi`，打开模型选择器（`/model`），从 **OpenCode Zen (free)**
