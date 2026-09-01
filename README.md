@@ -149,6 +149,10 @@ There is no build step: pi loads the TypeScript extension directly. The
 fallback-chain logic (`src/catalog.ts`) and id derivation (`src/ids.ts`) are
 unit-tested; the extension entry is verified by smoke-testing `pi -e .`.
 
+The free-model ledger (`src/free-models.json`) is refreshed daily by
+`.github/workflows/probe-models.yml`; run `node scripts/probe-models.mjs`
+locally to re-probe the anonymous lane on demand.
+
 Architecture decisions live in `docs/adr/`; project vocabulary in
 `CONTEXT.md`.
 

@@ -1,6 +1,7 @@
 import { readFile, rename, rm, writeFile, mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
+import ledger from './free-models.json' with { type: 'json' }
 import { opencodeUserAgent } from './ids.ts'
 
 /**
@@ -16,26 +17,13 @@ import { opencodeUserAgent } from './ids.ts'
 
 export const ZEN_BASE_URL = 'https://opencode.ai/zen'
 
-/** Verified against the anonymous lane with a real chat (agent/internal/catalog/static_models.go). */
-export const staticFreeModels: string[] = [
-  'big-pickle', // verified 2026-08-31 + 09-01: anonymous chat 200
-  'ling-3.0-flash-fin-free', // verified 2026-08-31 + 09-01: anonymous chat 200
-  'mimo-v2.5-free', // verified 2026-08-31 + 09-01: anonymous chat 200
-  'nemotron-3-ultra-free', // verified 2026-08-31: 200; 09-01 timeout (flaky, in the default free set)
-  'nemotron-3.5-lightning-free', // verified 2026-09-01: 200 (was 502 on 08-28, came back)
-  'laguna-s-2.1-free', // verified 2026-09-01: 200 (was 503 on 08-28+08-31, came back)
-]
-
 /**
- * Probe ledger: exposed by /v1/models (or once verified) but the anonymous
- * lane hard-fails on them, across multiple days. Banned from exposure —
- * re-probe before removing an entry; add with date + status code.
+ * Verified/banned ids from the probe ledger (free-models.json), which the
+ * daily workflow (scripts/probe-models.mjs) rewrites from real lane probes.
+ * Mitigated externally never changed by hand except via the script.
  */
-export const staticUnavailable: string[] = [
-  'deepseek-v4-flash-free', // 400 "Model is unavailable": 2026-08-28, 08-31, 09-01
-  'muse-spark-1.2-contributor-free', // 500/502 internal: 2026-08-28, 08-31, 09-01
-  'hy3-free', // 401, removed from upstream /v1/models
-]
+export const staticFreeModels: string[] = ledger.verified.map((entry) => entry.id)
+export const staticUnavailable: string[] = ledger.unavailable.map((entry) => entry.id)
 
 export function isFreeModel(model: string): boolean {
   return model.toLowerCase().includes('free')
@@ -162,6 +150,10 @@ export interface CatalogOptions {
   onRefresh?: (status: CatalogSnapshot, lastError: string) => void
   /** Delay between startup retries while the live catalog is empty (default 15s). */
   startupRetryMs?: number
+  /** Test seam: verified static ids (default: probe ledger). */
+  staticIds?: string[]
+  /** Test seam: banned ids (default: probe ledger). */
+  bannedIds?: string[]
 }
 
 const METADATA_REFRESH_MS = 24 * 60 * 60 * 1000
@@ -187,6 +179,8 @@ export class ModelCatalog {
   #stopped = false
   #onRefresh?: (status: CatalogSnapshot, lastError: string) => void
   #startupRetryMs: number
+  #staticIds: string[]
+  #bannedIds: string[]
   /** Raw models.dev provider payload, for full model metadata (src/models.ts). */
   #rawMetadata: unknown = null
 
@@ -199,6 +193,8 @@ export class ModelCatalog {
     this.#now = options.now ?? Date.now
     this.#onRefresh = options.onRefresh
     this.#startupRetryMs = options.startupRetryMs ?? 15_000
+    this.#staticIds = options.staticIds ?? staticFreeModels
+    this.#bannedIds = options.bannedIds ?? staticUnavailable
   }
 
   /**
@@ -278,19 +274,19 @@ export class ModelCatalog {
   }
 
   decision(model: string): AnonymousDecision {
-    if (staticUnavailable.includes(model)) {
+    if (this.#bannedIds.includes(model)) {
       return { allowed: false, source: 'static_banned', known: true }
     }
     const metadata = decide(model, this.#prices, this.#pricesReady)
-    if (!metadata.allowed && !metadata.known && staticFreeModels.includes(model)) {
+    if (!metadata.allowed && !metadata.known && this.#staticIds.includes(model)) {
       return { allowed: true, source: 'static_verified', known: false }
     }
     return metadata
   }
 
-  /** ids exposed to the picker: S1 ∩ allowed, or S3 while the live catalog is pending. */
+  /** ids exposed to the picker: S1 ∩ allowed, or the static verified set while the live catalog is pending. */
   list(): string[] {
-    if (this.#zen.size === 0) return [...staticFreeModels]
+    if (this.#zen.size === 0) return [...this.#staticIds]
     const out: string[] = []
     for (const model of this.#zen) {
       if (this.decision(model).allowed) out.push(model)

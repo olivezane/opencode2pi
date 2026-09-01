@@ -1,0 +1,35 @@
+name: probe free models
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Probe the anonymous lane and refresh the ledger
+        run: node scripts/probe-models.mjs
+
+      - name: Commit ledger updates
+        run: |
+          if git diff --quiet src/free-models.json; then
+            echo "No ledger changes — nothing to commit."
+            exit 0
+          fi
+          npm test || { echo "Tests failed — abandoning ledger update."; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@users.noreply.github.com"
+          git add src/free-models.json
+          git commit -m "chore: refresh free-model probe ledger ($(date -u +%F))"
+          git push

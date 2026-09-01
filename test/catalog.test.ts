@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { decodeModelsDev, decide, fetchZenModels, isFreeModel, ModelCatalog, staticFreeModels } from '../src/catalog.ts'
+import { decodeModelsDev, decide, fetchZenModels, isFreeModel, ModelCatalog } from '../src/catalog.ts'
 import { opencodeUserAgent } from '../src/ids.ts'
 
 function price(input?: number, output?: number, deprecated = false) {
@@ -159,12 +159,12 @@ test('ModelCatalog falls back to static ids while the live catalog is pending', 
   const fail = (async () => {
     throw new Error('network down')
   }) as typeof fetch
-  const catalog = new ModelCatalog({ fetchImpl: fail })
+  const catalog = new ModelCatalog({ fetchImpl: fail, staticIds: ['fixture-a'], bannedIds: [] })
   await catalog.refreshOnce()
-  assert.deepEqual(catalog.list(), staticFreeModels)
+  assert.deepEqual(catalog.list(), ['fixture-a'])
   // static ids are verified upstream: allowed even without metadata
-  assert.equal(catalog.decision('big-pickle').allowed, true)
-  assert.equal(catalog.decision('big-pickle').source, 'static_verified')
+  assert.equal(catalog.decision('fixture-a').allowed, true)
+  assert.equal(catalog.decision('fixture-a').source, 'static_verified')
   assert.equal(catalog.decision('unknown-model').allowed, false)
   assert.equal(catalog.snapshot().status, 'pending')
   catalog.stop()
@@ -176,6 +176,8 @@ test('ids the anonymous lane fails on are banned from exposure', async () => {
       'https://opencode.ai/zen/v1/models': { data: [{ id: 'deepseek-v4-flash-free' }, { id: 'big-pickle' }] },
       'https://models.dev/api.json': metadataBody,
     }),
+    staticIds: ['big-pickle'],
+    bannedIds: ['deepseek-v4-flash-free'],
   })
   try {
     await catalog.refreshOnce()

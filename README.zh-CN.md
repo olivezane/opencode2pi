@@ -138,6 +138,9 @@ npm run typecheck && npm test
 没有构建步骤：pi 直接加载 TypeScript 扩展。fallback 链逻辑（`src/catalog.ts`）
 与 id 派生（`src/ids.ts`）有单元测试；扩展入口用 `pi -e .` 冒烟验证。
 
+免费模型台账（`src/free-models.json`）由 `.github/workflows/probe-models.yml`
+每日刷新；想随时手动重探匿名通道，本地跑 `node scripts/probe-models.mjs`。
+
 架构决策在 `docs/adr/`；项目术语表在 `CONTEXT.md`。
 
 ## 致谢

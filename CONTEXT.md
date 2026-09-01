@@ -36,6 +36,17 @@ fallback chain below; lives in `ModelCatalog`.
 _Avoid_: model list (except for the raw `/v1/models` response)
 
 **Fallback chain**:
-Catalog resolution order: S1 live `GET /v1/models` ∩ free-by-metadata →
-S2 offline disk cache (~7-day TTL) → S3 compile-time verified static list.
+Catalog resolution order: S1 live `GET /v1/models` → S2 offline disk cache (~7-day TTL) → S3 compile-time verified static list. Currently two tiers: live-data + the probe ledger below.
 _Avoid_: tier system
+
+**Probe ledger** (`src/free-models.json`):
+The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 in a real probe, with date) and `unavailable` (ids that hard-failed 400/500/502/503/401 on two consecutive probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion.
+_Avoid_: ban list, blacklist
+
+**Verified / banned**:
+A model is *verified* when a probe chat returns 200 — it may be exposed. A model is *banned* after two consecutive daily hard failures; flaky probes (timeout, 429) never ban, and recovery moves an id back to verified at the next daily run.
+_Avoid_: blocked (reserved: upstream 401s on paid models are not "banned", they are not free)
+
+**Free-set rotation**:
+OpenCode rotates the anonymous lane's free set on a day scale; the probe ledger refreshes daily via `.github/workflows/probe-models.yml`, keeping the picker aligned with what the lane actually serves.
+_Avoid_: model churn
