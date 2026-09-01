@@ -18,23 +18,23 @@ export const ZEN_BASE_URL = 'https://opencode.ai/zen'
 
 /** Verified against the anonymous lane with a real chat (agent/internal/catalog/static_models.go). */
 export const staticFreeModels: string[] = [
-  'big-pickle', // verified 2026-08-31: anonymous chat 200
-  'ling-3.0-flash-fin-free', // verified 2026-08-31: anonymous chat 200
-  'mimo-v2.5-free', // verified 2026-08-31: anonymous chat 200
-  'nemotron-3-ultra-free', // verified 2026-08-31: anonymous chat 200
+  'big-pickle', // verified 2026-08-31 + 09-01: anonymous chat 200
+  'ling-3.0-flash-fin-free', // verified 2026-08-31 + 09-01: anonymous chat 200
+  'mimo-v2.5-free', // verified 2026-08-31 + 09-01: anonymous chat 200
+  'nemotron-3-ultra-free', // verified 2026-08-31: 200; 09-01 timeout (flaky, in the default free set)
+  'nemotron-3.5-lightning-free', // verified 2026-09-01: 200 (was 502 on 08-28, came back)
+  'laguna-s-2.1-free', // verified 2026-09-01: 200 (was 503 on 08-28+08-31, came back)
 ]
 
 /**
- * Probe ledger: exposed by /v1/models (and often free-named or priced 0 on
- * models.dev) but the anonymous lane fails on them. Banned from exposure —
+ * Probe ledger: exposed by /v1/models (or once verified) but the anonymous
+ * lane hard-fails on them, across multiple days. Banned from exposure —
  * re-probe before removing an entry; add with date + status code.
  */
 export const staticUnavailable: string[] = [
-  'deepseek-v4-flash-free', // 2026-08-31: 400 "Model is unavailable" (also 2026-08-28)
-  'muse-spark-1.2-contributor-free', // 2026-08-31: 500 internal (2026-08-28: 502)
-  'laguna-s-2.1-free', // 2026-08-31: 503 (also 2026-08-28)
-  'nemotron-3.5-lightning-free', // 2026-08-31: timeout (2026-08-28: 502 after all attempts)
-  'hy3-free', // 2026-08-31: removed from upstream /v1/models
+  'deepseek-v4-flash-free', // 400 "Model is unavailable": 2026-08-28, 08-31, 09-01
+  'muse-spark-1.2-contributor-free', // 500/502 internal: 2026-08-28, 08-31, 09-01
+  'hy3-free', // 401, removed from upstream /v1/models
 ]
 
 export function isFreeModel(model: string): boolean {
