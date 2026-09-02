@@ -5,14 +5,6 @@
       "verified": "2026-09-01"
     },
     {
-      "id": "laguna-s-2.1-free",
-      "verified": "2026-09-01"
-    },
-    {
-      "id": "ling-3.0-flash-fin-free",
-      "verified": "2026-09-01"
-    },
-    {
       "id": "mimo-v2.5-free",
       "verified": "2026-09-01"
     },
@@ -42,5 +34,16 @@
       "lastCode": 500
     }
   ],
-  "pending": []
+  "pending": [
+    {
+      "id": "laguna-s-2.1-free",
+      "firstFailed": "2026-09-02",
+      "lastCode": 503
+    },
+    {
+      "id": "ling-3.0-flash-fin-free",
+      "firstFailed": "2026-09-02",
+      "lastCode": 503
+    }
+  ]
 }
