@@ -98,6 +98,17 @@ export async function fetchZenCapabilities(
 }
 
 /**
+ * Chat-native only: pi sends openai-completions, so responses/anthropic-native
+ * ids are not pickable (and not worth probing on the chat lane). Unknown
+ * protocols degrade to exposed: only proven non-chat ids are hidden.
+ */
+export function isChatCapable(caps: ZenCapabilities, model: string): boolean {
+  if (caps.unsupported.has(model)) return false
+  const protocol = caps.protocols.get(model)
+  return protocol === undefined || protocol === 'chat'
+}
+
+/**
  * Verified/banned ids from the probe ledger (free-models.json), which the
  * daily workflow (scripts/probe-models.mjs) rewrites from real lane probes.
  * Mitigated externally never changed by hand except via the script.
@@ -398,10 +409,7 @@ export class ModelCatalog {
   /** Chat-native only: pi sends openai-completions, so responses/anthropic-native ids are not pickable. */
   capable(model: string): boolean {
     if (this.#capsFetchedAt === 0) return true
-    if (this.#capabilities.unsupported.has(model)) return false
-    const protocol = this.#capabilities.protocols.get(model)
-    // unknown protocols degrade to exposed: only proven non-chat ids are hidden
-    return protocol === undefined || protocol === 'chat'
+    return isChatCapable(this.#capabilities, model)
   }
 
   /** ids exposed to the picker: free ∧ chat-native, or the static verified set while the live catalog is pending. */

@@ -24,7 +24,9 @@
 
 import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+import { CAPABILITIES_URL, fetchZenCapabilities, isChatCapable } from '../src/catalog.ts'
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 const LEDGER_PATH = resolve(ROOT, 'src/free-models.json')
@@ -54,14 +56,17 @@ async function main() {
   const prices = await fetchFreePrices()
   const ledger = JSON.parse(await readFile(LEDGER_PATH, 'utf8'))
 
-  // Candidates: everything the lane might serve free (name or metadata says
-  // free) plus every id already in the ledger (to track rotation/recovery).
-  const currentIds = [...ledger.verified, ...ledger.unavailable, ...ledger.pending].map((e) => e.id)
-  const candidateIds = [
-    ...zenIds.filter((id) => id.toLowerCase().includes('free') || prices.has(id)),
-    ...currentIds,
-  ]
-  const candidates = [...new Set(candidateIds)].sort()
+  // Capability catalog: skip ids whose native protocol is not chat (the picker
+  // never shows them, so probing them only wastes lane requests and pollutes
+  // the ledger). Unavailable -> degrade to probing every candidate rather than
+  // rewrite the ledger from an incomplete picture.
+  let caps = null
+  try {
+    caps = await fetchZenCapabilities(CAPABILITIES_URL, fetch, userAgent())
+  } catch (err) {
+    console.warn(`capability catalog unavailable (${err instanceof Error ? err.message : String(err)}); probing every candidate`)
+  }
+  const candidates = selectCandidates(zenIds, prices, ledger, caps)
 
   const verdicts = new Map()
   for (const id of candidates) {
@@ -107,6 +112,15 @@ async function main() {
   console.log(
     `\nledger: verified=${out.verified.length} unavailable=${out.unavailable.length} pending=${out.pending.length}`,
   )
+}
+
+/** Candidate set: free-ish ids + ledger ids; with capabilities known, skip non-chat-native ids. */
+export function selectCandidates(zenIds, prices, ledger, caps) {
+  const currentIds = [...ledger.verified, ...ledger.unavailable, ...ledger.pending].map((e) => e.id)
+  const freeIds = zenIds.filter((id) => id.toLowerCase().includes('free') || prices.has(id))
+  const ids = [...new Set([...freeIds, ...currentIds])].sort()
+  if (!caps) return ids
+  return ids.filter((id) => isChatCapable(caps, id))
 }
 
 async function fetchZenIds() {
@@ -158,7 +172,11 @@ async function probe(id) {
   }
 }
 
-main().catch((err) => {
-  console.error(`probe failed: ${err instanceof Error ? err.message : String(err)}`)
-  process.exit(1)
-})
+// Entry guard: importing this module (tests) must not run the probe.
+const isMain = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false
+if (isMain) {
+  main().catch((err) => {
+    console.error(`probe failed: ${err instanceof Error ? err.message : String(err)}`)
+    process.exit(1)
+  })
+}

@@ -58,7 +58,7 @@ Catalog resolution order: S1 live `GET /v1/models` → S2 offline disk cache (~7
 _Avoid_: tier system
 
 **Probe ledger** (`src/free-models.json`):
-The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion.
+The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion. Candidates skip ids the capability catalog proves non-chat-native (they can never be exposed); if the capability catalog is unreachable the probe degrades to probing every candidate rather than rewriting from an incomplete picture.
 _Avoid_: ban list, blacklist
 
 **Verified / banned**:

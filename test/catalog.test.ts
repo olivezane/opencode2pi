@@ -6,6 +6,7 @@ import {
   decodeZenCapabilities,
   fetchZenModels,
   fetchZenCapabilities,
+  isChatCapable,
   isFreeModel,
   ModelCatalog,
   protocolForSdk,
@@ -323,6 +324,15 @@ test('reportFailure flaky statuses never hide a model', async () => {
   } finally {
     catalog.stop()
   }
+})
+
+test('isChatCapable mirrors the exposure rule: chat-native yes, proven non-chat no, unknown yes', () => {
+  const caps = decodeZenCapabilities(capabilityBody)
+  assert.ok(isChatCapable(caps, 'qwen-free'), 'chat-native exposed')
+  assert.ok(!isChatCapable(caps, 'muse-free'), 'responses-native hidden')
+  assert.ok(!isChatCapable(caps, 'claude-free'), 'anthropic-native hidden')
+  assert.ok(!isChatCapable(caps, 'weird-free'), 'unknown SDK hidden')
+  assert.ok(isChatCapable(caps, 'mystery-free'), 'absent from catalog: unknown protocol stays exposed')
 })
 
 test('reportFailure keeps a fixed cooldown window across repeats and success clears it', async () => {
