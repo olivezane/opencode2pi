@@ -26,7 +26,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { CAPABILITIES_URL, fetchZenCapabilities, isChatCapable } from '../src/catalog.ts'
+import { CAPABILITIES_URL, fetchZenCapabilities, isProbeable } from '../src/catalog.ts'
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 const LEDGER_PATH = resolve(ROOT, 'src/free-models.json')
@@ -56,10 +56,11 @@ async function main() {
   const prices = await fetchFreePrices()
   const ledger = JSON.parse(await readFile(LEDGER_PATH, 'utf8'))
 
-  // Capability catalog: skip ids whose native protocol is not chat (the picker
-  // never shows them, so probing them only wastes lane requests and pollutes
-  // the ledger). Unavailable -> degrade to probing every candidate rather than
-  // rewrite the ledger from an incomplete picture.
+  // Capability catalog: skip ids whose SDK is unknown (no known endpoint —
+  // nothing to probe); every known protocol is probed on its native endpoint
+  // (chat/responses/anthropic), so responses- or messages-native free models
+  // are still verified. Unavailable -> degrade to probing every candidate
+  // rather than rewrite the ledger from an incomplete picture.
   let caps = null
   try {
     caps = await fetchZenCapabilities(CAPABILITIES_URL, fetch, userAgent())
@@ -70,7 +71,8 @@ async function main() {
 
   const verdicts = new Map()
   for (const id of candidates) {
-    const status = await probe(id)
+    const protocol = caps?.protocols.get(id) ?? 'chat'
+    const status = await probe(id, protocol)
     verdicts.set(id, status)
     console.log(`${String(status).padEnd(8)} ${id}`)
     await new Promise((r) => setTimeout(r, PROBE_SPACING_MS))
@@ -114,13 +116,43 @@ async function main() {
   )
 }
 
-/** Candidate set: free-ish ids + ledger ids; with capabilities known, skip non-chat-native ids. */
+/** Candidate set: free-ish ids + ledger ids; with capabilities known, skip ids whose SDK is unknown. */
 export function selectCandidates(zenIds, prices, ledger, caps) {
   const currentIds = [...ledger.verified, ...ledger.unavailable, ...ledger.pending].map((e) => e.id)
   const freeIds = zenIds.filter((id) => id.toLowerCase().includes('free') || prices.has(id))
   const ids = [...new Set([...freeIds, ...currentIds])].sort()
   if (!caps) return ids
-  return ids.filter((id) => isChatCapable(caps, id))
+  return ids.filter((id) => isProbeable(caps, id))
+}
+
+/** Native endpoint + auth per protocol (opencode2api protocolPath + lanu auth shapes). */
+export function probeRequest(id, protocol) {
+  const base = {
+    ...headers(),
+    'content-type': 'application/json',
+    'x-opencode-request': `req_${Math.random().toString(16).slice(2)}`,
+  }
+  if (protocol === 'responses') {
+    return {
+      url: `${ZEN_BASE}/v1/responses`,
+      headers: base,
+      body: { model: id, input: 'hi', stream: false },
+    }
+  }
+  if (protocol === 'anthropic') {
+    // The lane authenticates anthropic requests via x-api-key, not Bearer
+    const { authorization: _auth, ...rest } = base
+    return {
+      url: `${ZEN_BASE}/v1/messages`,
+      headers: { ...rest, 'x-api-key': ANONYMOUS },
+      body: { model: id, messages: [{ role: 'user', content: 'hi' }], max_tokens: MAX_TOKENS },
+    }
+  }
+  return {
+    url: `${ZEN_BASE}/v1/chat/completions`,
+    headers: base,
+    body: { model: id, messages: [{ role: 'user', content: 'hi' }], max_tokens: MAX_TOKENS, stream: false },
+  }
 }
 
 async function fetchZenIds() {
@@ -153,14 +185,15 @@ async function fetchFreePrices() {
   return free
 }
 
-async function probe(id) {
+async function probe(id, protocol = 'chat') {
+  const request = probeRequest(id, protocol)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
   try {
-    const response = await fetch(`${ZEN_BASE}/v1/chat/completions`, {
+    const response = await fetch(request.url, {
       method: 'POST',
-      headers: headers({ 'content-type': 'application/json', 'x-opencode-request': `req_${Math.random().toString(16).slice(2)}` }),
-      body: JSON.stringify({ model: id, messages: [{ role: 'user', content: 'hi' }], max_tokens: MAX_TOKENS, stream: false }),
+      headers: request.headers,
+      body: JSON.stringify(request.body),
       signal: controller.signal,
     })
     await response.text()

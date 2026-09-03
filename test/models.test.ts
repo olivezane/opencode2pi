@@ -41,6 +41,22 @@ test('decodeModelsDevMeta prefers the opencode section and maps the metadata fie
   assert.equal(decodeModelsDevMeta(null).size, 0)
 })
 
+test('responses-native models mark off-thinking unsupported so pi-ai skips effort none', () => {
+  const models = toPiModels(['r-free'], new Map(), new Map([['r-free', 'responses']]) as never)
+  assert.deepEqual(models[0]?.thinkingLevelMap, { off: null })
+})
+
+test('toPiModels dispatches the pi api layer by native protocol', () => {
+  const protocols = new Map<string, string>([
+    ['r-free', 'responses'],
+    ['a-free', 'anthropic'],
+  ])
+  const models = toPiModels(['r-free', 'a-free', 'c-free'], new Map(), protocols as never)
+  assert.equal(models.find((m) => m.id === 'r-free')?.api, 'openai-responses')
+  assert.equal(models.find((m) => m.id === 'a-free')?.api, 'anthropic-messages')
+  assert.equal(models.find((m) => m.id === 'c-free')?.api, 'openai-completions', 'unknown protocol defaults to chat')
+})
+
 test('toPiModels builds complete pi models, defaulting what metadata lacks', () => {
   const meta = decodeModelsDevMeta(payload)
   const models = toPiModels(['qwen3-coder-next', 'hy3-free'], meta)

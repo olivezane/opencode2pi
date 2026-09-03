@@ -14,6 +14,8 @@ import {
 } from '@earendil-works/pi-ai'
 import * as openaiCompletions from '@earendil-works/pi-ai/api/openai-completions'
 import type { OpenAICompletionsOptions } from '@earendil-works/pi-ai/api/openai-completions'
+import * as openaiResponses from '@earendil-works/pi-ai/api/openai-responses'
+import type { OpenAIResponsesOptions } from '@earendil-works/pi-ai/api/openai-responses'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.ts'
@@ -103,7 +105,7 @@ function buildProvider(cat: ModelCatalog): Provider<Api> {
         resolve: async () => ({ auth: { apiKey: ANONYMOUS_KEY }, source: 'anonymous lane' }),
       },
     },
-    models: toPiModels(cat.list(), decodeModelsDevMeta(cat.rawMetadata)),
+    models: toPiModels(cat.list(), decodeModelsDevMeta(cat.rawMetadata), cat.protocols),
     api: zenApi(),
   })
 }
@@ -117,7 +119,7 @@ function buildProvider(cat: ModelCatalog): Provider<Api> {
  * 408/409/429/5xx with Retry-After-aware backoff; the guard wraps the stream
  * to feed hard failures (400/401) back into the catalog as runtime cooldown.
  */
-function zenApi(): ProviderStreams {
+function zenApi(): Partial<Record<Api, ProviderStreams>> {
   const inject = (context: Context, options?: SimpleStreamOptions): SimpleStreamOptions => {
     const ids = deriveRequestIDs(context.messages)
     return {
@@ -135,13 +137,25 @@ function zenApi(): ProviderStreams {
     else catalog.reportSuccess(modelId)
   }
   const model = (m: Model<Api>) => m as Model<'openai-completions'>
+  const modelResponses = (m: Model<Api>) => m as Model<'openai-responses'>
   return {
-    stream: (m, context, options) =>
-      guardedStream(
-        openaiCompletions.stream(model(m), context, inject(context, options) as OpenAICompletionsOptions),
-        report(m.id),
-      ) as unknown as AssistantMessageEventStream,
-    streamSimple: (m, context, options) =>
-      guardedStream(openaiCompletions.streamSimple(model(m), context, inject(context, options)), report(m.id)) as unknown as AssistantMessageEventStream,
+    'openai-completions': {
+      stream: (m, context, options) =>
+        guardedStream(
+          openaiCompletions.stream(model(m), context, inject(context, options) as OpenAICompletionsOptions),
+          report(m.id),
+        ) as unknown as AssistantMessageEventStream,
+      streamSimple: (m, context, options) =>
+        guardedStream(openaiCompletions.streamSimple(model(m), context, inject(context, options)), report(m.id)) as unknown as AssistantMessageEventStream,
+    },
+    'openai-responses': {
+      stream: (m, context, options) =>
+        guardedStream(
+          openaiResponses.stream(modelResponses(m), context, inject(context, options) as OpenAIResponsesOptions),
+          report(m.id),
+        ) as unknown as AssistantMessageEventStream,
+      streamSimple: (m, context, options) =>
+        guardedStream(openaiResponses.streamSimple(modelResponses(m), context, inject(context, options)), report(m.id)) as unknown as AssistantMessageEventStream,
+    },
   }
 }

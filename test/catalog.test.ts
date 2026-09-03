@@ -6,8 +6,9 @@ import {
   decodeZenCapabilities,
   fetchZenModels,
   fetchZenCapabilities,
-  isChatCapable,
+  isExposedProtocol,
   isFreeModel,
+  isProbeable,
   ModelCatalog,
   protocolForSdk,
 } from '../src/catalog.ts'
@@ -251,22 +252,6 @@ const freeMetadata = {
   opencode: { models: { 'qwen-free': { cost: { input: 0, output: 0 } }, 'muse-free': { cost: { input: 0, output: 0 } }, 'mystery-free': { cost: { input: 0, output: 0 } } } },
 }
 
-test('ModelCatalog keeps only chat-native free models once capabilities land', async () => {
-  const catalog = new ModelCatalog({
-    fetchImpl: fakeFetch({
-      'https://opencode.ai/zen/v1/models': { data: [{ id: 'qwen-free' }, { id: 'muse-free' }, { id: 'mystery-free' }] },
-      'https://models.dev/api.json': freeMetadata,
-      'https://models.opencode.ai/api.json': capabilityBody,
-    }),
-  })
-  try {
-    await catalog.refreshOnce()
-    // muse-free is responses-native on Zen: chat requests to it are the reported errors
-    assert.deepEqual(catalog.list(), ['mystery-free', 'qwen-free'])
-  } finally {
-    catalog.stop()
-  }
-})
 
 test('ModelCatalog degrades to today behavior while capabilities are unavailable', async () => {
   const capsFail = (async (url: string | URL) => {
@@ -326,13 +311,36 @@ test('reportFailure flaky statuses never hide a model', async () => {
   }
 })
 
-test('isChatCapable mirrors the exposure rule: chat-native yes, proven non-chat no, unknown yes', () => {
+test('isProbeable and isExposedProtocol split known-SDK from actually exposed', () => {
   const caps = decodeZenCapabilities(capabilityBody)
-  assert.ok(isChatCapable(caps, 'qwen-free'), 'chat-native exposed')
-  assert.ok(!isChatCapable(caps, 'muse-free'), 'responses-native hidden')
-  assert.ok(!isChatCapable(caps, 'claude-free'), 'anthropic-native hidden')
-  assert.ok(!isChatCapable(caps, 'weird-free'), 'unknown SDK hidden')
-  assert.ok(isChatCapable(caps, 'mystery-free'), 'absent from catalog: unknown protocol stays exposed')
+  // probeable: every known protocol is worth probing on its native endpoint
+  assert.ok(isProbeable(caps, 'qwen-free'))
+  assert.ok(isProbeable(caps, 'muse-free'), 'responses-native: probe /v1/responses')
+  assert.ok(isProbeable(caps, 'claude-free'), 'anthropic-native: probe /v1/messages (upstream 401 is a verdict)')
+  assert.ok(!isProbeable(caps, 'weird-free'), 'unknown SDK: no known endpoint, nothing to probe')
+  // exposed: chat + responses work through pi-ai layers; anthropic is rejected by the anonymous lane
+  assert.ok(isExposedProtocol(caps, 'qwen-free'))
+  assert.ok(isExposedProtocol(caps, 'muse-free'), 'responses-native is pickable via openai-responses')
+  assert.ok(!isExposedProtocol(caps, 'claude-free'), 'anonymous /v1/messages is not supported (401)')
+  assert.ok(!isExposedProtocol(caps, 'weird-free'))
+  assert.ok(isExposedProtocol(caps, 'mystery-free'), 'unknown protocol degrades to exposed')
+})
+
+test('ModelCatalog exposes chat- and responses-native free models, excludes unsupported SDK and anthropic', async () => {
+  const catalog = new ModelCatalog({
+    fetchImpl: fakeFetch({
+      'https://opencode.ai/zen/v1/models': { data: [{ id: 'qwen-free' }, { id: 'muse-free' }, { id: 'mystery-free' }, { id: 'weird-free' }] },
+      'https://models.dev/api.json': freeMetadata,
+      'https://models.opencode.ai/api.json': capabilityBody,
+    }),
+  })
+  try {
+    await catalog.refreshOnce()
+    // muse-free is responses-native: exposed via the openai-responses layer; weird-free (unknown SDK) is not
+    assert.deepEqual(catalog.list(), ['muse-free', 'mystery-free', 'qwen-free'])
+  } finally {
+    catalog.stop()
+  }
 })
 
 test('reportFailure keeps a fixed cooldown window across repeats and success clears it', async () => {

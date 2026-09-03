@@ -39,10 +39,12 @@ _Avoid_: model list (except for the raw `/v1/models` response)
 `https://models.opencode.ai/api.json` — OpenCode's machine-readable provider
 catalog. Each model's npm SDK choice declares its native upstream protocol
 (openai-compatible → chat, @ai-sdk/openai → responses, @ai-sdk/anthropic →
-messages). pi only speaks openai-completions, so responses/anthropic-native
-models are never exposed; unknown SDKs are marked unsupported. Refreshes on
-the same 24h cadence as models.dev; while unavailable the catalog degrades
-to no-filter (today's behavior) rather than hiding models on a guess.
+messages). Chat- and responses-native models are exposed and served through
+the matching pi-ai layer; anthropic-native models are never exposed (the
+anonymous lane rejects /v1/messages with 401 "not supported"), and unknown
+SDKs are marked unsupported. Refreshes on the same 24h cadence as models.dev;
+while unavailable the catalog degrades to no-filter (today's behavior) rather
+than hiding models on a guess.
 _Avoid_: protocol list, native protocol (reserved context)
 
 **Runtime cooldown**:
@@ -58,7 +60,7 @@ Catalog resolution order: S1 live `GET /v1/models` → S2 offline disk cache (~7
 _Avoid_: tier system
 
 **Probe ledger** (`src/free-models.json`):
-The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion. Candidates skip ids the capability catalog proves non-chat-native (they can never be exposed); if the capability catalog is unreachable the probe degrades to probing every candidate rather than rewriting from an incomplete picture.
+The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion. Each candidate is probed on its native protocol (chat/responses/anthropic), so a model is only "verified" if its own interface actually answers; candidates with unknown SDKs are skipped (no known endpoint), and if the capability catalog is unreachable the probe degrades to probing every candidate rather than rewriting from an incomplete picture.
 _Avoid_: ban list, blacklist
 
 **Verified / banned**:

@@ -98,14 +98,20 @@ export async function fetchZenCapabilities(
 }
 
 /**
- * Chat-native only: pi sends openai-completions, so responses/anthropic-native
- * ids are not pickable (and not worth probing on the chat lane). Unknown
- * protocols degrade to exposed: only proven non-chat ids are hidden.
+ * Probeable: every known protocol is worth probing on its native endpoint
+ * (chat/responses/anthropic); only unknown SDKs have no endpoint to probe.
  */
-export function isChatCapable(caps: ZenCapabilities, model: string): boolean {
-  if (caps.unsupported.has(model)) return false
-  const protocol = caps.protocols.get(model)
-  return protocol === undefined || protocol === 'chat'
+export function isProbeable(caps: ZenCapabilities, model: string): boolean {
+  return !caps.unsupported.has(model)
+}
+
+/**
+ * Exposed: chat- and responses-native models work through pi's pi-ai layers;
+ * anthropic-native models are rejected by the anonymous lane (/v1/messages
+ * returns 401 "not supported"), and unknown protocols degrade to exposed.
+ */
+export function isExposedProtocol(caps: ZenCapabilities, model: string): boolean {
+  return isProbeable(caps, model) && caps.protocols.get(model) !== 'anthropic'
 }
 
 /**
@@ -406,10 +412,15 @@ export class ModelCatalog {
     return metadata
   }
 
-  /** Chat-native only: pi sends openai-completions, so responses/anthropic-native ids are not pickable. */
+  /** Exposed if the protocol filter is known and the model survives it (chat/responses/unknown; anthropic and unknown SDKs hidden). */
   capable(model: string): boolean {
     if (this.#capsFetchedAt === 0) return true
-    return isChatCapable(this.#capabilities, model)
+    return isExposedProtocol(this.#capabilities, model)
+  }
+
+  /** Native protocol per model (from the capability catalog); empty while it has not landed. */
+  get protocols(): Map<string, ZenProtocol> {
+    return this.#capabilities.protocols
   }
 
   /** ids exposed to the picker: free ∧ chat-native, or the static verified set while the live catalog is pending. */

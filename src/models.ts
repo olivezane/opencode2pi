@@ -1,5 +1,6 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
 
+import type { ZenProtocol } from './catalog.ts'
 import { ZEN_BASE_URL, forModelsDev } from './catalog.ts'
 
 /** Identity, used as the provider id in pi's model picker and the data dir name. */
@@ -56,16 +57,22 @@ export function decodeModelsDevMeta(data: unknown): Map<string, ModelMeta> {
 }
 
 /** Build the pi model list for the picker: ids already decided free by the catalog. */
-export function toPiModels(ids: string[], meta: Map<string, ModelMeta>): Array<Model<Api>> {
+export function toPiModels(ids: string[], meta: Map<string, ModelMeta>, protocols: Map<string, ZenProtocol> = new Map()): Array<Model<Api>> {
   return ids.map((id) => {
     const m = meta.get(id)
+    const protocol = protocols.get(id)
+    const api =
+      protocol === 'responses' ? 'openai-responses' : protocol === 'anthropic' ? 'anthropic-messages' : 'openai-completions'
     return {
       id,
       name: m?.name ?? id,
-      api: 'openai-completions' as const,
+      api,
       provider: PROVIDER_ID,
       baseUrl: ZEN_V1,
       reasoning: m?.reasoning ?? false,
+      // pi-ai defaults reasoning-capable models to effort "none", which Zen
+      // rejects; marking off unsupported skips the reasoning param instead.
+      ...(protocol === 'responses' ? { thinkingLevelMap: { off: null } } : {}),
       input: m?.image ? ['text', 'image'] : ['text'],
       cost: {
         input: m?.costInput ?? 0,
