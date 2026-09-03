@@ -47,11 +47,10 @@ _Avoid_: protocol list, native protocol (reserved context)
 
 **Runtime cooldown**:
 Per-session model feedback from real requests (pool.go pattern compressed to
-one model): a hard 400/401 hides the model from the picker for an escalating
-exponential window (base 10 min, ×8 cap); flaky statuses (429/5xx/timeout)
-never hide — they are pi-ai's retry domain (maxRetries). The next successful
-reply clears the cooldown. Reacts within the session, unlike the daily probe
-ledger.
+one model): a hard 400/401 hides the model from the picker for a fixed
+10-minute window; flaky statuses (429/5xx/timeout) never hide — they are
+pi-ai's retry domain (maxRetries). The next successful reply clears the
+cooldown. Reacts within the session, unlike the daily probe ledger.
 _Avoid_: runtime ban, blacklist
 
 **Fallback chain**:

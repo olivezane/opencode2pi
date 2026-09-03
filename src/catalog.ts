@@ -23,7 +23,9 @@ export const ZEN_BASE_URL = 'https://opencode.ai/zen'
  * Only chat-native models are safe for pi's openai-completions wire layer.
  */
 export const CAPABILITIES_URL = 'https://models.opencode.ai/api.json'
-const CAPABILITY_REFRESH_MS = 24 * 60 * 60 * 1000
+
+/** Slow-moving data (capability catalog, models.dev prices): refresh daily. */
+const DAILY_REFRESH_MS = 24 * 60 * 60 * 1000
 
 export type ZenProtocol = 'chat' | 'responses' | 'anthropic'
 
@@ -43,12 +45,11 @@ export function protocolForSdk(npm: string): ZenProtocol | undefined {
   return undefined
 }
 
-/** capabilityTier (models.go): which tier a provider entry belongs to. */
-function capabilityTier(providerId: string, api: string): 'zen' | 'go' | undefined {
+/** isZenProvider (capabilityTier trimmed to the anonymous Zen lane). */
+function isZenProvider(providerId: string, api: string): boolean {
   const value = `${providerId} ${api}`.toLowerCase()
-  if (value.includes('opencode-go') || value.includes('/go/')) return 'go'
-  if (value.includes('opencode') || value.includes('/zen/')) return 'zen'
-  return undefined
+  if (value.includes('opencode-go') || value.includes('/go/')) return false
+  return value.includes('opencode') || value.includes('/zen/')
 }
 
 /**
@@ -67,7 +68,7 @@ export function decodeZenCapabilities(data: unknown): ZenCapabilities {
   >
   for (const [providerId, provider] of Object.entries(providers)) {
     if (!provider || typeof provider !== 'object') continue
-    if (capabilityTier(String(providerId), String(provider.api ?? '')) !== 'zen') continue
+    if (!isZenProvider(String(providerId), String(provider.api ?? ''))) continue
     const npm = typeof provider.npm === 'string' ? provider.npm : ''
     for (const [modelKey, model] of Object.entries(provider.models ?? {})) {
       if (!model || typeof model !== 'object') continue
@@ -241,10 +242,9 @@ export interface CatalogOptions {
 
 /** Runtime hard-failure codes: the model/report itself was rejected (probe policy, compressed to session scale). */
 const RUNTIME_HARD_CODES = new Set([400, 401])
-/** Base cooldown after one hard failure; escalates x2 per repeat, capped x8 (pool.go feedback). */
+/** Cooldown after one hard failure; a later success clears it (pool.go feedback, compressed). */
 const RUNTIME_COOLDOWN_MS = 10 * 60 * 1000
 
-const METADATA_REFRESH_MS = 24 * 60 * 60 * 1000
 const FETCH_TIMEOUT_MS = 30_000
 
 /**
@@ -278,7 +278,6 @@ export class ModelCatalog {
   #capsFetchedAt = 0
   /** Runtime cooldown: model id -> timestamp until which hard-failed ids are hidden. */
   #cooldownUntil: Map<string, number> = new Map()
-  #hardFailures: Map<string, number> = new Map()
 
   constructor(options: CatalogOptions = {}) {
     this.#refreshSeconds = options.refreshSeconds ?? 300
@@ -337,7 +336,7 @@ export class ModelCatalog {
 
   /** Native protocols refresh on their own 24h cadence (the SDK choice changes slowly). */
   async refreshCapabilities(): Promise<void> {
-    if (this.#capsFetchedAt !== 0 && this.#now() - this.#capsFetchedAt < CAPABILITY_REFRESH_MS) return
+    if (this.#capsFetchedAt !== 0 && this.#now() - this.#capsFetchedAt < DAILY_REFRESH_MS) return
     try {
       this.#capabilities = await fetchZenCapabilities(this.#capabilitiesUrl, this.#fetch, opencodeUserAgent())
       this.#capsFetchedAt = this.#now()
@@ -413,15 +412,12 @@ export class ModelCatalog {
 
   /**
    * Runtime feedback from real requests (pool.go MarkFailure compressed to a
-   * per-model cooldown): hard 400/401 hide the model with an escalating
-   * cooldown; flaky statuses are ignored (they are pi-ai's retry domain).
+   * per-model cooldown): hard 400/401 hide the model for a fixed window;
+   * flaky statuses are ignored (they are pi-ai's retry domain).
    */
   reportFailure(model: string, status: number | undefined): void {
     if (status === undefined || !RUNTIME_HARD_CODES.has(status)) return
-    const failures = (this.#hardFailures.get(model) ?? 0) + 1
-    this.#hardFailures.set(model, failures)
-    const multiplier = Math.min(2 ** Math.min(failures - 1, 3), 8)
-    this.#cooldownUntil.set(model, this.#now() + RUNTIME_COOLDOWN_MS * multiplier)
+    this.#cooldownUntil.set(model, this.#now() + RUNTIME_COOLDOWN_MS)
     if (this.#onChange) {
       try {
         this.#onChange()
@@ -433,9 +429,7 @@ export class ModelCatalog {
 
   /** A later success clears any pending runtime cooldown (the model recovered). */
   reportSuccess(model: string): void {
-    const hadFailures = this.#hardFailures.delete(model)
-    const hadCooldown = this.#cooldownUntil.delete(model)
-    if (!hadFailures && !hadCooldown) return
+    if (!this.#cooldownUntil.delete(model)) return
     if (this.#onChange) {
       try {
         this.#onChange()
@@ -518,7 +512,7 @@ async function saveMetadataCache(path: string, prices: Map<string, ModelPrice>, 
 
 async function loadMetadataCache(path: string): Promise<Map<string, ModelPrice>> {
   const raw = JSON.parse(await readFile(path, 'utf8')) as MetadataCache
-  if (Date.now() - raw.updatedAt > 7 * METADATA_REFRESH_MS) {
+  if (Date.now() - raw.updatedAt > 7 * DAILY_REFRESH_MS) {
     throw new Error('models.dev cache too old')
   }
   return new Map(raw.prices)

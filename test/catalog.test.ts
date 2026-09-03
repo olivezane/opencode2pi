@@ -325,18 +325,16 @@ test('reportFailure flaky statuses never hide a model', async () => {
   }
 })
 
-test('reportFailure escalates on repeats and success clears the cooldown', async () => {
+test('reportFailure keeps a fixed cooldown window across repeats and success clears it', async () => {
   const { catalog, clock } = freeCatalog()
   try {
     await catalog.refreshOnce()
     catalog.reportFailure('qwen-free', 400)
     clock.value = 1
     catalog.reportFailure('qwen-free', 401)
-    // second hard failure doubles the cooldown: still hidden past the base window
+    // repeats must not extend the window: back at the base cooldown
     clock.value = 10 * 60 * 1000 + 1
-    assert.deepEqual(catalog.list(), [], 'second failure escalated the cooldown')
-    clock.value = 20 * 60 * 1000 + 1
-    assert.deepEqual(catalog.list(), ['qwen-free'])
+    assert.deepEqual(catalog.list(), ['qwen-free'], 'second failure stayed inside the same fixed window')
     // a later success clears any pending cooldown immediately
     catalog.reportFailure('qwen-free', 400)
     catalog.reportSuccess('qwen-free')
