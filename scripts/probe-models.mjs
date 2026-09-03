@@ -26,7 +26,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { CAPABILITIES_URL, fetchZenCapabilities, isProbeable } from '../src/catalog.ts'
+import { CAPABILITIES_URL, fetchZenCapabilities, isRouteable } from '../src/catalog.ts'
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 const LEDGER_PATH = resolve(ROOT, 'src/free-models.json')
@@ -122,7 +122,7 @@ export function selectCandidates(zenIds, prices, ledger, caps) {
   const freeIds = zenIds.filter((id) => id.toLowerCase().includes('free') || prices.has(id))
   const ids = [...new Set([...freeIds, ...currentIds])].sort()
   if (!caps) return ids
-  return ids.filter((id) => isProbeable(caps, id))
+  return ids.filter((id) => isRouteable(caps, id))
 }
 
 /** Native endpoint + auth per protocol (opencode2api protocolPath + lanu auth shapes). */

@@ -98,20 +98,13 @@ export async function fetchZenCapabilities(
 }
 
 /**
- * Probeable: every known protocol is worth probing on its native endpoint
- * (chat/responses/anthropic); only unknown SDKs have no endpoint to probe.
+ * Routeable: every protocol OpenCode's catalog assigns — chat, responses and
+ * anthropic — has a pi-ai layer and a native endpoint to probe; only unknown
+ * SDKs (no endpoint mapping, e.g. @ai-sdk/google) are excluded. Absent models
+ * degrade to exposed (assume chat, the common case).
  */
-export function isProbeable(caps: ZenCapabilities, model: string): boolean {
+export function isRouteable(caps: ZenCapabilities, model: string): boolean {
   return !caps.unsupported.has(model)
-}
-
-/**
- * Exposed: chat- and responses-native models work through pi's pi-ai layers;
- * anthropic-native models are rejected by the anonymous lane (/v1/messages
- * returns 401 "not supported"), and unknown protocols degrade to exposed.
- */
-export function isExposedProtocol(caps: ZenCapabilities, model: string): boolean {
-  return isProbeable(caps, model) && caps.protocols.get(model) !== 'anthropic'
 }
 
 /**
@@ -412,10 +405,10 @@ export class ModelCatalog {
     return metadata
   }
 
-  /** Exposed if the protocol filter is known and the model survives it (chat/responses/unknown; anthropic and unknown SDKs hidden). */
+  /** Exposed if the protocol is routeable (known protocol or unknown-degrade; unknown SDKs hidden). */
   capable(model: string): boolean {
     if (this.#capsFetchedAt === 0) return true
-    return isExposedProtocol(this.#capabilities, model)
+    return isRouteable(this.#capabilities, model)
   }
 
   /** Native protocol per model (from the capability catalog); empty while it has not landed. */

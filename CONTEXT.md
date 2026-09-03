@@ -39,12 +39,14 @@ _Avoid_: model list (except for the raw `/v1/models` response)
 `https://models.opencode.ai/api.json` — OpenCode's machine-readable provider
 catalog. Each model's npm SDK choice declares its native upstream protocol
 (openai-compatible → chat, @ai-sdk/openai → responses, @ai-sdk/anthropic →
-messages). Chat- and responses-native models are exposed and served through
-the matching pi-ai layer; anthropic-native models are never exposed (the
-anonymous lane rejects /v1/messages with 401 "not supported"), and unknown
-SDKs are marked unsupported. Refreshes on the same 24h cadence as models.dev;
-while unavailable the catalog degrades to no-filter (today's behavior) rather
-than hiding models on a guess.
+messages). Every known protocol is routeable: exposed and served through the
+matching pi-ai layer (openai-completions / openai-responses /
+anthropic-messages), and probed on that native endpoint. Unknown SDKs are
+marked unsupported and excluded — no endpoint mapping exists. Probing decides
+whether the lane actually serves a model; a routeable model the lane rejects
+(401) is hidden by the runtime cooldown, then banned by the probe ledger.
+Refreshes on the same 24h cadence as models.dev; while unavailable the catalog
+degrades to no-filter (today's behavior) rather than hiding models on a guess.
 _Avoid_: protocol list, native protocol (reserved context)
 
 **Runtime cooldown**:

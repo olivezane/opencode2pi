@@ -6,9 +6,8 @@ import {
   decodeZenCapabilities,
   fetchZenModels,
   fetchZenCapabilities,
-  isExposedProtocol,
   isFreeModel,
-  isProbeable,
+  isRouteable,
   ModelCatalog,
   protocolForSdk,
 } from '../src/catalog.ts'
@@ -311,33 +310,27 @@ test('reportFailure flaky statuses never hide a model', async () => {
   }
 })
 
-test('isProbeable and isExposedProtocol split known-SDK from actually exposed', () => {
+test('isRouteable accepts every protocol OpenCode’s catalog assigns and rejects unknown SDKs', () => {
   const caps = decodeZenCapabilities(capabilityBody)
-  // probeable: every known protocol is worth probing on its native endpoint
-  assert.ok(isProbeable(caps, 'qwen-free'))
-  assert.ok(isProbeable(caps, 'muse-free'), 'responses-native: probe /v1/responses')
-  assert.ok(isProbeable(caps, 'claude-free'), 'anthropic-native: probe /v1/messages (upstream 401 is a verdict)')
-  assert.ok(!isProbeable(caps, 'weird-free'), 'unknown SDK: no known endpoint, nothing to probe')
-  // exposed: chat + responses work through pi-ai layers; anthropic is rejected by the anonymous lane
-  assert.ok(isExposedProtocol(caps, 'qwen-free'))
-  assert.ok(isExposedProtocol(caps, 'muse-free'), 'responses-native is pickable via openai-responses')
-  assert.ok(!isExposedProtocol(caps, 'claude-free'), 'anonymous /v1/messages is not supported (401)')
-  assert.ok(!isExposedProtocol(caps, 'weird-free'))
-  assert.ok(isExposedProtocol(caps, 'mystery-free'), 'unknown protocol degrades to exposed')
+  assert.ok(isRouteable(caps, 'qwen-free'), 'chat: openai-completions layer')
+  assert.ok(isRouteable(caps, 'muse-free'), 'responses: openai-responses layer')
+  assert.ok(isRouteable(caps, 'claude-free'), 'anthropic: anthropic-messages layer (probing decides whether the lane serves it)')
+  assert.ok(!isRouteable(caps, 'weird-free'), 'unknown SDK: no endpoint mapping')
+  assert.ok(isRouteable(caps, 'mystery-free'), 'absent from catalog: unknown protocol degrades to exposed')
 })
 
-test('ModelCatalog exposes chat- and responses-native free models, excludes unsupported SDK and anthropic', async () => {
+test('ModelCatalog exposes every known-protocol free model and excludes unsupported SDKs only', async () => {
   const catalog = new ModelCatalog({
     fetchImpl: fakeFetch({
-      'https://opencode.ai/zen/v1/models': { data: [{ id: 'qwen-free' }, { id: 'muse-free' }, { id: 'mystery-free' }, { id: 'weird-free' }] },
+      'https://opencode.ai/zen/v1/models': { data: [{ id: 'qwen-free' }, { id: 'muse-free' }, { id: 'claude-free' }, { id: 'mystery-free' }, { id: 'weird-free' }] },
       'https://models.dev/api.json': freeMetadata,
       'https://models.opencode.ai/api.json': capabilityBody,
     }),
   })
   try {
     await catalog.refreshOnce()
-    // muse-free is responses-native: exposed via the openai-responses layer; weird-free (unknown SDK) is not
-    assert.deepEqual(catalog.list(), ['muse-free', 'mystery-free', 'qwen-free'])
+    // muse-free (responses) and claude-free (anthropic) are exposed; weird-free (unknown SDK) is not
+    assert.deepEqual(catalog.list(), ['claude-free', 'muse-free', 'mystery-free', 'qwen-free'])
   } finally {
     catalog.stop()
   }

@@ -68,7 +68,8 @@ export function toPiModels(ids: string[], meta: Map<string, ModelMeta>, protocol
       name: m?.name ?? id,
       api,
       provider: PROVIDER_ID,
-      baseUrl: ZEN_V1,
+      // the Anthropic SDK appends /v1/messages itself; openai layers want /v1
+      baseUrl: protocol === 'anthropic' ? ZEN_BASE_URL : ZEN_V1,
       reasoning: m?.reasoning ?? false,
       // pi-ai defaults reasoning-capable models to effort "none", which Zen
       // rejects; marking off unsupported skips the reasoning param instead.

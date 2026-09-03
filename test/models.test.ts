@@ -55,6 +55,9 @@ test('toPiModels dispatches the pi api layer by native protocol', () => {
   assert.equal(models.find((m) => m.id === 'r-free')?.api, 'openai-responses')
   assert.equal(models.find((m) => m.id === 'a-free')?.api, 'anthropic-messages')
   assert.equal(models.find((m) => m.id === 'c-free')?.api, 'openai-completions', 'unknown protocol defaults to chat')
+  // the Anthropic SDK appends /v1/messages itself, so its baseUrl is the host root
+  assert.equal(models.find((m) => m.id === 'a-free')?.baseUrl, 'https://opencode.ai/zen')
+  assert.equal(models.find((m) => m.id === 'c-free')?.baseUrl, 'https://opencode.ai/zen/v1')
 })
 
 test('toPiModels builds complete pi models, defaulting what metadata lacks', () => {

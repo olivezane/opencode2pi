@@ -16,6 +16,8 @@ import * as openaiCompletions from '@earendil-works/pi-ai/api/openai-completions
 import type { OpenAICompletionsOptions } from '@earendil-works/pi-ai/api/openai-completions'
 import * as openaiResponses from '@earendil-works/pi-ai/api/openai-responses'
 import type { OpenAIResponsesOptions } from '@earendil-works/pi-ai/api/openai-responses'
+import * as anthropicMessages from '@earendil-works/pi-ai/api/anthropic-messages'
+import type { AnthropicOptions } from '@earendil-works/pi-ai/api/anthropic-messages'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.ts'
@@ -138,24 +140,24 @@ function zenApi(): Partial<Record<Api, ProviderStreams>> {
   }
   const model = (m: Model<Api>) => m as Model<'openai-completions'>
   const modelResponses = (m: Model<Api>) => m as Model<'openai-responses'>
+  const modelMessages = (m: Model<Api>) => m as Model<'anthropic-messages'>
+  const guardStream = (inner: AsyncIterable<unknown>, modelId: string) =>
+    guardedStream(inner as AsyncIterable<{ type: string; error?: { errorMessage?: string } }>, report(modelId)) as unknown as AssistantMessageEventStream
   return {
     'openai-completions': {
       stream: (m, context, options) =>
-        guardedStream(
-          openaiCompletions.stream(model(m), context, inject(context, options) as OpenAICompletionsOptions),
-          report(m.id),
-        ) as unknown as AssistantMessageEventStream,
-      streamSimple: (m, context, options) =>
-        guardedStream(openaiCompletions.streamSimple(model(m), context, inject(context, options)), report(m.id)) as unknown as AssistantMessageEventStream,
+        guardStream(openaiCompletions.stream(model(m), context, inject(context, options) as OpenAICompletionsOptions), m.id),
+      streamSimple: (m, context, options) => guardStream(openaiCompletions.streamSimple(model(m), context, inject(context, options)), m.id),
     },
     'openai-responses': {
       stream: (m, context, options) =>
-        guardedStream(
-          openaiResponses.stream(modelResponses(m), context, inject(context, options) as OpenAIResponsesOptions),
-          report(m.id),
-        ) as unknown as AssistantMessageEventStream,
-      streamSimple: (m, context, options) =>
-        guardedStream(openaiResponses.streamSimple(modelResponses(m), context, inject(context, options)), report(m.id)) as unknown as AssistantMessageEventStream,
+        guardStream(openaiResponses.stream(modelResponses(m), context, inject(context, options) as OpenAIResponsesOptions), m.id),
+      streamSimple: (m, context, options) => guardStream(openaiResponses.streamSimple(modelResponses(m), context, inject(context, options)), m.id),
+    },
+    'anthropic-messages': {
+      stream: (m, context, options) =>
+        guardStream(anthropicMessages.stream(modelMessages(m), context, inject(context, options) as AnthropicOptions), m.id),
+      streamSimple: (m, context, options) => guardStream(anthropicMessages.streamSimple(modelMessages(m), context, inject(context, options)), m.id),
     },
   }
 }
