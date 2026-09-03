@@ -35,18 +35,7 @@
       "id": "hy3-free",
       "firstFailed": "2026-08-31",
       "lastCode": 401
-    },
-    {
-      "id": "muse-spark-1.2-contributor-free",
-      "firstFailed": "2026-08-28",
-      "lastCode": 500
     }
   ],
-  "pending": [
-    {
-      "id": "muse-spark-1.3-contributor-free",
-      "firstFailed": "2026-09-03",
-      "lastCode": 500
-    }
-  ]
+  "pending": []
 }
