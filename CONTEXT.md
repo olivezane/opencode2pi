@@ -35,6 +35,25 @@ The set of models this package exposes in pi's model picker. Decided by the
 fallback chain below; lives in `ModelCatalog`.
 _Avoid_: model list (except for the raw `/v1/models` response)
 
+**Capability catalog**:
+`https://models.opencode.ai/api.json` — OpenCode's machine-readable provider
+catalog. Each model's npm SDK choice declares its native upstream protocol
+(openai-compatible → chat, @ai-sdk/openai → responses, @ai-sdk/anthropic →
+messages). pi only speaks openai-completions, so responses/anthropic-native
+models are never exposed; unknown SDKs are marked unsupported. Refreshes on
+the same 24h cadence as models.dev; while unavailable the catalog degrades
+to no-filter (today's behavior) rather than hiding models on a guess.
+_Avoid_: protocol list, native protocol (reserved context)
+
+**Runtime cooldown**:
+Per-session model feedback from real requests (pool.go pattern compressed to
+one model): a hard 400/401 hides the model from the picker for an escalating
+exponential window (base 10 min, ×8 cap); flaky statuses (429/5xx/timeout)
+never hide — they are pi-ai's retry domain (maxRetries). The next successful
+reply clears the cooldown. Reacts within the session, unlike the daily probe
+ledger.
+_Avoid_: runtime ban, blacklist
+
 **Fallback chain**:
 Catalog resolution order: S1 live `GET /v1/models` → S2 offline disk cache (~7-day TTL) → S3 compile-time verified static list. Currently two tiers: live-data + the probe ledger below.
 _Avoid_: tier system

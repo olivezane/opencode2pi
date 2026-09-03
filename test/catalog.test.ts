@@ -1,6 +1,15 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { decodeModelsDev, decide, fetchZenModels, isFreeModel, ModelCatalog } from '../src/catalog.ts'
+import {
+  decodeModelsDev,
+  decide,
+  decodeZenCapabilities,
+  fetchZenModels,
+  fetchZenCapabilities,
+  isFreeModel,
+  ModelCatalog,
+  protocolForSdk,
+} from '../src/catalog.ts'
 import { opencodeUserAgent } from '../src/ids.ts'
 
 function price(input?: number, output?: number, deprecated = false) {
@@ -168,6 +177,173 @@ test('ModelCatalog falls back to static ids while the live catalog is pending', 
   assert.equal(catalog.decision('unknown-model').allowed, false)
   assert.equal(catalog.snapshot().status, 'pending')
   catalog.stop()
+})
+
+test('protocolForSdk maps the OpenCode SDK choice to the native protocol', () => {
+  assert.equal(protocolForSdk('@ai-sdk/openai-compatible'), 'chat')
+  assert.equal(protocolForSdk('@ai-sdk/anthropic'), 'anthropic')
+  assert.equal(protocolForSdk('@ai-sdk/openai'), 'responses')
+  assert.equal(protocolForSdk('sdk-company/openai'), 'responses')
+  assert.equal(protocolForSdk('@ai-sdk/google'), undefined)
+})
+
+const capabilityBody = {
+  openai: { id: 'openai', api: 'https://api.openai.com/v1', npm: '@ai-sdk/openai', models: {} },
+  opencode: {
+    id: 'opencode',
+    api: 'https://opencode.ai/zen/v1',
+    npm: '@ai-sdk/openai-compatible',
+    models: {
+      'qwen-free': { id: 'qwen-free', provider: { npm: '@ai-sdk/openai-compatible' } },
+      'muse-free': { id: 'muse-free', provider: { npm: '@ai-sdk/openai' } },
+      'claude-free': { id: 'claude-free', provider: { npm: '@ai-sdk/anthropic' } },
+      'weird-free': { id: 'weird-free', provider: { npm: '@ai-sdk/google' } },
+      'inherits-default': { id: 'inherits-default', provider: {} },
+    },
+  },
+  'opencode-go': {
+    id: 'opencode-go',
+    api: 'https://opencode.ai/zen/go/v1',
+    npm: '@ai-sdk/openai-compatible',
+    models: { 'go-only': { id: 'go-only', provider: {} } },
+  },
+}
+
+function expectCaps(caps: { protocols: Map<string, string>; unsupported: Set<string> }) {
+  return {
+    chat: [...caps.protocols].filter(([, p]) => p === 'chat').map(([id]) => id).sort(),
+    anthropic: [...caps.protocols].filter(([, p]) => p === 'anthropic').map(([id]) => id).sort(),
+    responses: [...caps.protocols].filter(([, p]) => p === 'responses').map(([id]) => id).sort(),
+    unsupported: [...caps.unsupported].sort(),
+  }
+}
+
+test('decodeZenCapabilities selects the Zen provider only and merges model SDKs', () => {
+  const caps = expectCaps(decodeZenCapabilities(capabilityBody))
+  assert.deepEqual(caps.chat, ['inherits-default', 'qwen-free'], 'inherits the provider npm default')
+  assert.deepEqual(caps.responses, ['muse-free'])
+  assert.deepEqual(caps.anthropic, ['claude-free'])
+  assert.deepEqual(caps.unsupported, ['weird-free'], 'unknown SDK is unsupported, not chatter')
+  assert.ok(!caps.chat.includes('go-only'), 'opencode-go models must not leak into the Zen set')
+  assert.equal(decodeZenCapabilities({ openai: { models: {} } }).protocols.size, 0)
+})
+
+test('fetchZenCapabilities sends the CLI disguise and rejects an empty Zen set', async () => {
+  const capture: { url?: string; init?: RequestInit } = {}
+  const caps = await fetchZenCapabilities(
+    'https://models.opencode.ai/api.json',
+    fakeFetch({ 'https://models.opencode.ai/api.json': capabilityBody }, capture),
+    opencodeUserAgent(),
+  )
+  assert.equal(caps.protocols.get('qwen-free'), 'chat')
+  assert.equal(capture.url, 'https://models.opencode.ai/api.json')
+  const headers = new Headers(capture.init?.headers)
+  assert.equal(headers.get('accept'), 'application/json')
+  assert.ok(headers.get('user-agent')?.startsWith('opencode/'))
+  await assert.rejects(
+    fetchZenCapabilities('https://models.opencode.ai/api.json', fakeFetch({ 'https://models.opencode.ai/api.json': { openai: {} } }), opencodeUserAgent()),
+    /no Zen models/,
+  )
+})
+
+const freeMetadata = {
+  opencode: { models: { 'qwen-free': { cost: { input: 0, output: 0 } }, 'muse-free': { cost: { input: 0, output: 0 } }, 'mystery-free': { cost: { input: 0, output: 0 } } } },
+}
+
+test('ModelCatalog keeps only chat-native free models once capabilities land', async () => {
+  const catalog = new ModelCatalog({
+    fetchImpl: fakeFetch({
+      'https://opencode.ai/zen/v1/models': { data: [{ id: 'qwen-free' }, { id: 'muse-free' }, { id: 'mystery-free' }] },
+      'https://models.dev/api.json': freeMetadata,
+      'https://models.opencode.ai/api.json': capabilityBody,
+    }),
+  })
+  try {
+    await catalog.refreshOnce()
+    // muse-free is responses-native on Zen: chat requests to it are the reported errors
+    assert.deepEqual(catalog.list(), ['mystery-free', 'qwen-free'])
+  } finally {
+    catalog.stop()
+  }
+})
+
+test('ModelCatalog degrades to today behavior while capabilities are unavailable', async () => {
+  const capsFail = (async (url: string | URL) => {
+    if (String(url).includes('models.opencode.ai')) throw new Error('caps network down')
+    if (String(url).includes('/v1/models')) return new Response(JSON.stringify({ data: [{ id: 'muse-free' }] }), { status: 200 })
+    return new Response(JSON.stringify(freeMetadata), { status: 200 })
+  }) as typeof fetch
+  const catalog = new ModelCatalog({ fetchImpl: capsFail })
+  try {
+    await catalog.refreshOnce()
+    assert.deepEqual(catalog.list(), ['muse-free'], 'no capabilities: unknown protocol is not assumed broken')
+  } finally {
+    catalog.stop()
+  }
+})
+
+function freeCatalog() {
+  const clock = { value: 0 }
+  const catalog = new ModelCatalog({
+    fetchImpl: fakeFetch({
+      'https://opencode.ai/zen/v1/models': { data: [{ id: 'qwen-free' }] },
+      'https://models.dev/api.json': freeMetadata,
+      'https://models.opencode.ai/api.json': capabilityBody,
+    }),
+    now: () => clock.value,
+  })
+  return { catalog, clock }
+}
+
+test('reportFailure hard codes start a cooldown that hides the model, then it returns', async () => {
+  const { catalog, clock } = freeCatalog()
+  try {
+    await catalog.refreshOnce()
+    assert.deepEqual(catalog.list(), ['qwen-free'])
+    catalog.reportFailure('qwen-free', 400)
+    assert.equal(catalog.decision('qwen-free').allowed, false)
+    assert.equal(catalog.decision('qwen-free').source, 'runtime_cooldown')
+    assert.deepEqual(catalog.list(), [])
+    // after the base cooldown the model is pickable again (ledger still decides freshness)
+    clock.value = 10 * 60 * 1000 + 1
+    assert.deepEqual(catalog.list(), ['qwen-free'])
+  } finally {
+    catalog.stop()
+  }
+})
+
+test('reportFailure flaky statuses never hide a model', async () => {
+  const { catalog } = freeCatalog()
+  try {
+    await catalog.refreshOnce()
+    for (const status of [429, 500, 503, 408, undefined]) {
+      catalog.reportFailure('qwen-free', status)
+      assert.deepEqual(catalog.list(), ['qwen-free'], `status ${status} must not hide`)
+    }
+  } finally {
+    catalog.stop()
+  }
+})
+
+test('reportFailure escalates on repeats and success clears the cooldown', async () => {
+  const { catalog, clock } = freeCatalog()
+  try {
+    await catalog.refreshOnce()
+    catalog.reportFailure('qwen-free', 400)
+    clock.value = 1
+    catalog.reportFailure('qwen-free', 401)
+    // second hard failure doubles the cooldown: still hidden past the base window
+    clock.value = 10 * 60 * 1000 + 1
+    assert.deepEqual(catalog.list(), [], 'second failure escalated the cooldown')
+    clock.value = 20 * 60 * 1000 + 1
+    assert.deepEqual(catalog.list(), ['qwen-free'])
+    // a later success clears any pending cooldown immediately
+    catalog.reportFailure('qwen-free', 400)
+    catalog.reportSuccess('qwen-free')
+    assert.deepEqual(catalog.list(), ['qwen-free'])
+  } finally {
+    catalog.stop()
+  }
 })
 
 test('ids the anonymous lane fails on are banned from exposure', async () => {

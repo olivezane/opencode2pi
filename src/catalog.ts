@@ -18,6 +18,85 @@ import { opencodeUserAgent } from './ids.ts'
 export const ZEN_BASE_URL = 'https://opencode.ai/zen'
 
 /**
+ * OpenCode's machine-readable provider catalog (models.opencode.ai/api.json):
+ * per-model SDK choice, which is the upstream native protocol declaration.
+ * Only chat-native models are safe for pi's openai-completions wire layer.
+ */
+export const CAPABILITIES_URL = 'https://models.opencode.ai/api.json'
+const CAPABILITY_REFRESH_MS = 24 * 60 * 60 * 1000
+
+export type ZenProtocol = 'chat' | 'responses' | 'anthropic'
+
+export interface ZenCapabilities {
+  /** model id -> native protocol (SDK-declared). */
+  protocols: Map<string, ZenProtocol>
+  /** models present on Zen but whose SDK is not one of the known protocols. */
+  unsupported: Set<string>
+}
+
+/** protocolForSDK (models.go): SDK npm -> upstream native protocol. */
+export function protocolForSdk(npm: string): ZenProtocol | undefined {
+  const value = npm.toLowerCase().trim()
+  if (value.includes('anthropic')) return 'anthropic'
+  if (value === '@ai-sdk/openai' || value.endsWith('/openai')) return 'responses'
+  if (value.includes('openai-compatible')) return 'chat'
+  return undefined
+}
+
+/** capabilityTier (models.go): which tier a provider entry belongs to. */
+function capabilityTier(providerId: string, api: string): 'zen' | 'go' | undefined {
+  const value = `${providerId} ${api}`.toLowerCase()
+  if (value.includes('opencode-go') || value.includes('/go/')) return 'go'
+  if (value.includes('opencode') || value.includes('/zen/')) return 'zen'
+  return undefined
+}
+
+/**
+ * decodeZenCapabilities: port of fetchProtocolCapabilities (models.go:431)
+ * trimmed to the single anonymous Zen lane. Visits each Zen model exactly
+ * once; per-model SDK overrides the provider default. Unknown SDK => flagged
+ * as unsupported (distinguished from absent, which stays exposed).
+ */
+export function decodeZenCapabilities(data: unknown): ZenCapabilities {
+  const protocols = new Map<string, ZenProtocol>()
+  const unsupported = new Set<string>()
+  if (!data || typeof data !== 'object') return { protocols, unsupported }
+  const providers = data as Record<
+    string,
+    { id?: unknown; api?: unknown; npm?: unknown; models?: Record<string, { id?: unknown; provider?: { npm?: unknown } }> }
+  >
+  for (const [providerId, provider] of Object.entries(providers)) {
+    if (!provider || typeof provider !== 'object') continue
+    if (capabilityTier(String(providerId), String(provider.api ?? '')) !== 'zen') continue
+    const npm = typeof provider.npm === 'string' ? provider.npm : ''
+    for (const [modelKey, model] of Object.entries(provider.models ?? {})) {
+      if (!model || typeof model !== 'object') continue
+      const modelId = typeof model.id === 'string' && model.id.length > 0 ? model.id : modelKey
+      const sdk = typeof model.provider?.npm === 'string' ? model.provider.npm : npm
+      const protocol = protocolForSdk(sdk)
+      if (protocol) protocols.set(modelId, protocol)
+      else unsupported.add(modelId)
+    }
+  }
+  return { protocols, unsupported }
+}
+
+/** S2-catalog: fetchProtocolCapabilities with the CLI disguise headers. */
+export async function fetchZenCapabilities(
+  capabilitiesUrl: string,
+  fetchImpl: typeof fetch,
+  userAgent: string,
+): Promise<ZenCapabilities> {
+  const response = await withTimeout(fetchImpl(capabilitiesUrl, { headers: { accept: 'application/json', 'user-agent': userAgent } }))
+  if (!response.ok) throw new Error(`capability endpoint returned HTTP ${response.status}`)
+  const caps = decodeZenCapabilities(await response.json())
+  if (caps.protocols.size === 0 && caps.unsupported.size === 0) {
+    throw new Error('capability endpoint returned no Zen models')
+  }
+  return caps
+}
+
+/**
  * Verified/banned ids from the probe ledger (free-models.json), which the
  * daily workflow (scripts/probe-models.mjs) rewrites from real lane probes.
  * Mitigated externally never changed by hand except via the script.
@@ -144,10 +223,14 @@ export interface CatalogOptions {
   zenBaseUrl?: string
   /** models.dev override for tests. */
   metadataUrl?: string
+  /** OpenCode capability catalog override for tests. */
+  capabilitiesUrl?: string
   fetchImpl?: typeof fetch
   now?: () => number
   /** Observability hook: fired after every refresh round (start + interval). */
   onRefresh?: (status: CatalogSnapshot, lastError: string) => void
+  /** Fired when runtime feedback changed the exposure set (cooldown on/off). */
+  onChange?: () => void
   /** Delay between startup retries while the live catalog is empty (default 15s). */
   startupRetryMs?: number
   /** Test seam: verified static ids (default: probe ledger). */
@@ -155,6 +238,11 @@ export interface CatalogOptions {
   /** Test seam: banned ids (default: probe ledger). */
   bannedIds?: string[]
 }
+
+/** Runtime hard-failure codes: the model/report itself was rejected (probe policy, compressed to session scale). */
+const RUNTIME_HARD_CODES = new Set([400, 401])
+/** Base cooldown after one hard failure; escalates x2 per repeat, capped x8 (pool.go feedback). */
+const RUNTIME_COOLDOWN_MS = 10 * 60 * 1000
 
 const METADATA_REFRESH_MS = 24 * 60 * 60 * 1000
 const FETCH_TIMEOUT_MS = 30_000
@@ -173,25 +261,35 @@ export class ModelCatalog {
   #cachePath?: string
   #zenBaseUrl: string
   #metadataUrl: string
+  #capabilitiesUrl: string
   #fetch: typeof fetch
   #now: () => number
   #timer: NodeJS.Timeout | null = null
   #stopped = false
   #onRefresh?: (status: CatalogSnapshot, lastError: string) => void
+  #onChange?: () => void
   #startupRetryMs: number
   #staticIds: string[]
   #bannedIds: string[]
   /** Raw models.dev provider payload, for full model metadata (src/models.ts). */
   #rawMetadata: unknown = null
+  /** Native protocols from the OpenCode capability catalog; empty until it lands. */
+  #capabilities: ZenCapabilities = { protocols: new Map(), unsupported: new Set() }
+  #capsFetchedAt = 0
+  /** Runtime cooldown: model id -> timestamp until which hard-failed ids are hidden. */
+  #cooldownUntil: Map<string, number> = new Map()
+  #hardFailures: Map<string, number> = new Map()
 
   constructor(options: CatalogOptions = {}) {
     this.#refreshSeconds = options.refreshSeconds ?? 300
     this.#cachePath = options.cachePath
     this.#zenBaseUrl = options.zenBaseUrl ?? ZEN_BASE_URL
     this.#metadataUrl = options.metadataUrl ?? 'https://models.dev/api.json'
+    this.#capabilitiesUrl = options.capabilitiesUrl ?? CAPABILITIES_URL
     this.#fetch = options.fetchImpl ?? fetch
     this.#now = options.now ?? Date.now
     this.#onRefresh = options.onRefresh
+    this.#onChange = options.onChange
     this.#startupRetryMs = options.startupRetryMs ?? 15_000
     this.#staticIds = options.staticIds ?? staticFreeModels
     this.#bannedIds = options.bannedIds ?? staticUnavailable
@@ -227,13 +325,24 @@ export class ModelCatalog {
   }
 
   async refreshOnce(): Promise<void> {
-    await Promise.allSettled([this.refreshZen(), this.refreshMetadata()])
+    await Promise.allSettled([this.refreshZen(), this.refreshMetadata(), this.refreshCapabilities()])
     if (this.#onRefresh) {
       try {
         this.#onRefresh(this.snapshot(), this.#lastError)
       } catch {
         // observers must never break the refresh loop
       }
+    }
+  }
+
+  /** Native protocols refresh on their own 24h cadence (the SDK choice changes slowly). */
+  async refreshCapabilities(): Promise<void> {
+    if (this.#capsFetchedAt !== 0 && this.#now() - this.#capsFetchedAt < CAPABILITY_REFRESH_MS) return
+    try {
+      this.#capabilities = await fetchZenCapabilities(this.#capabilitiesUrl, this.#fetch, opencodeUserAgent())
+      this.#capsFetchedAt = this.#now()
+    } catch {
+      // unknown protocol states stay exposed: degrade to no-filter instead of hiding
     }
   }
 
@@ -277,6 +386,9 @@ export class ModelCatalog {
     if (this.#bannedIds.includes(model)) {
       return { allowed: false, source: 'static_banned', known: true }
     }
+    if ((this.#cooldownUntil.get(model) ?? 0) > this.#now()) {
+      return { allowed: false, source: 'runtime_cooldown', known: true }
+    }
     const metadata = decide(model, this.#prices, this.#pricesReady)
     if (!metadata.allowed && !metadata.known && this.#staticIds.includes(model)) {
       return { allowed: true, source: 'static_verified', known: false }
@@ -284,14 +396,53 @@ export class ModelCatalog {
     return metadata
   }
 
-  /** ids exposed to the picker: S1 ∩ allowed, or the static verified set while the live catalog is pending. */
+  /** Chat-native only: pi sends openai-completions, so responses/anthropic-native ids are not pickable. */
+  capable(model: string): boolean {
+    if (this.#capsFetchedAt === 0) return true
+    if (this.#capabilities.unsupported.has(model)) return false
+    const protocol = this.#capabilities.protocols.get(model)
+    // unknown protocols degrade to exposed: only proven non-chat ids are hidden
+    return protocol === undefined || protocol === 'chat'
+  }
+
+  /** ids exposed to the picker: free ∧ chat-native, or the static verified set while the live catalog is pending. */
   list(): string[] {
-    if (this.#zen.size === 0) return [...this.#staticIds]
-    const out: string[] = []
-    for (const model of this.#zen) {
-      if (this.decision(model).allowed) out.push(model)
+    const ids = this.#zen.size === 0 ? this.#staticIds : [...this.#zen]
+    return ids.filter((model) => this.decision(model).allowed && this.capable(model)).sort()
+  }
+
+  /**
+   * Runtime feedback from real requests (pool.go MarkFailure compressed to a
+   * per-model cooldown): hard 400/401 hide the model with an escalating
+   * cooldown; flaky statuses are ignored (they are pi-ai's retry domain).
+   */
+  reportFailure(model: string, status: number | undefined): void {
+    if (status === undefined || !RUNTIME_HARD_CODES.has(status)) return
+    const failures = (this.#hardFailures.get(model) ?? 0) + 1
+    this.#hardFailures.set(model, failures)
+    const multiplier = Math.min(2 ** Math.min(failures - 1, 3), 8)
+    this.#cooldownUntil.set(model, this.#now() + RUNTIME_COOLDOWN_MS * multiplier)
+    if (this.#onChange) {
+      try {
+        this.#onChange()
+      } catch {
+        // observers must never break request handling
+      }
     }
-    return out.sort()
+  }
+
+  /** A later success clears any pending runtime cooldown (the model recovered). */
+  reportSuccess(model: string): void {
+    const hadFailures = this.#hardFailures.delete(model)
+    const hadCooldown = this.#cooldownUntil.delete(model)
+    if (!hadFailures && !hadCooldown) return
+    if (this.#onChange) {
+      try {
+        this.#onChange()
+      } catch {
+        // observers must never break request handling
+      }
+    }
   }
 
   snapshot(): CatalogSnapshot {

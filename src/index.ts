@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import {
   createProvider,
   type Api,
+  type AssistantMessageEventStream,
   type Context,
   type Model,
   type Provider,
@@ -18,6 +19,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.ts'
 import { deriveRequestIDs, disguiseHeaders } from './ids.ts'
 import { ANONYMOUS_KEY, PROVIDER_ID, PROVIDER_NAME, ZEN_V1, decodeModelsDevMeta, toPiModels } from './models.ts'
+import { guardedStream, type StreamResult } from './stream.ts'
 
 /**
  * opencode2pi pi extension entry.
@@ -44,12 +46,19 @@ const catalog = new ModelCatalog({
   onRefresh: (status, lastError) => {
     writeStatus(status, lastError)
     if (lastError) console.warn(`opencode2pi: catalog refresh issue: ${lastError}`)
-    // Re-register a fresh provider: baseline models are rebuilt from the
-    // catalog, and pi replaces the provider (and its models) in place.
-    piRef?.registerProvider(buildProvider(catalog))
+    reRegister()
   },
+  // Runtime feedback (cooldown on/off) must reach the picker without waiting
+  // for the next refresh round.
+  onChange: () => reRegister(),
 })
 let catalogStarted = false
+
+// Re-register a fresh provider: baseline models are rebuilt from the catalog,
+// and pi replaces the provider (and its models) in place.
+function reRegister(): void {
+  piRef?.registerProvider(buildProvider(catalog))
+}
 
 export default function (pi: ExtensionAPI): void {
   // Register pi for the onRefresh hook; the singleton is reused on re-run.
@@ -103,6 +112,10 @@ function buildProvider(cat: ModelCatalog): Provider<Api> {
  * The wire layer: pi-ai openai-completions with the per-request disguise
  * headers and derived ids injected into the stream options. pi hands us a
  * native pi-ai Context, so no request/response conversion is needed.
+ *
+ * Reliability additions: pi-ai's own retry (maxRetries) covers transient
+ * 408/409/429/5xx with Retry-After-aware backoff; the guard wraps the stream
+ * to feed hard failures (400/401) back into the catalog as runtime cooldown.
  */
 function zenApi(): ProviderStreams {
   const inject = (context: Context, options?: SimpleStreamOptions): SimpleStreamOptions => {
@@ -112,13 +125,23 @@ function zenApi(): ProviderStreams {
       apiKey: ANONYMOUS_KEY,
       sessionId: ids.session,
       headers: { ...options?.headers, ...disguiseHeaders(ids) },
+      maxRetries: 1,
+      maxRetryDelayMs: 30_000,
     }
+  }
+  // Runtime feedback from the terminal stream event into the catalog.
+  const report = (modelId: string) => (result: StreamResult): void => {
+    if (result.outcome === 'error') catalog.reportFailure(modelId, result.status)
+    else catalog.reportSuccess(modelId)
   }
   const model = (m: Model<Api>) => m as Model<'openai-completions'>
   return {
     stream: (m, context, options) =>
-      openaiCompletions.stream(model(m), context, inject(context, options) as OpenAICompletionsOptions),
+      guardedStream(
+        openaiCompletions.stream(model(m), context, inject(context, options) as OpenAICompletionsOptions),
+        report(m.id),
+      ) as unknown as AssistantMessageEventStream,
     streamSimple: (m, context, options) =>
-      openaiCompletions.streamSimple(model(m), context, inject(context, options)),
+      guardedStream(openaiCompletions.streamSimple(model(m), context, inject(context, options)), report(m.id)) as unknown as AssistantMessageEventStream,
   }
 }
