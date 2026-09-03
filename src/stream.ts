@@ -1,3 +1,12 @@
+import type {
+  Api,
+  AssistantMessageEventStream,
+  Context,
+  Model,
+  ProviderStreams,
+  SimpleStreamOptions,
+} from '@earendil-works/pi-ai'
+
 /**
  * Runtime feedback seam between the provider stream layer and the catalog:
  * pi-ai swallows upstream HTTP errors into a terminal `error` event carrying
@@ -25,6 +34,24 @@ export function statusFromErrorMessage(message: string | undefined): number | un
   const leading = /^(\d{3})\b/.exec(message) // "400: ...", "400 status code ..."
   const status = Number(prefixed?.[1] ?? leading?.[1])
   return Number.isFinite(status) && status > 0 ? status : undefined
+}
+
+/**
+ * Wire a provider API implementation into a guarded layer: inject the
+ * per-request options, report the terminal outcome, keep the stream events
+ * untouched. One layer per protocol (chat/responses/anthropic).
+ */
+export function wireLayer(
+  implementation: ProviderStreams,
+  inject: (context: Context, options?: SimpleStreamOptions) => SimpleStreamOptions,
+  report: (modelId: string) => (result: StreamResult) => void,
+): ProviderStreams {
+  const guard = (inner: AsyncIterable<unknown>, modelId: string) =>
+    guardedStream(inner as AsyncIterable<GuardedEvent>, report(modelId)) as unknown as AssistantMessageEventStream
+  return {
+    stream: (m, context, options) => guard(implementation.stream(m, context, inject(context, options)), m.id),
+    streamSimple: (m, context, options) => guard(implementation.streamSimple(m, context, inject(context, options)), m.id),
+  }
 }
 
 /**

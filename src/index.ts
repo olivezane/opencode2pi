@@ -5,25 +5,20 @@ import { join } from 'node:path'
 import {
   createProvider,
   type Api,
-  type AssistantMessageEventStream,
   type Context,
-  type Model,
   type Provider,
   type ProviderStreams,
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai'
 import * as openaiCompletions from '@earendil-works/pi-ai/api/openai-completions'
-import type { OpenAICompletionsOptions } from '@earendil-works/pi-ai/api/openai-completions'
 import * as openaiResponses from '@earendil-works/pi-ai/api/openai-responses'
-import type { OpenAIResponsesOptions } from '@earendil-works/pi-ai/api/openai-responses'
 import * as anthropicMessages from '@earendil-works/pi-ai/api/anthropic-messages'
-import type { AnthropicOptions } from '@earendil-works/pi-ai/api/anthropic-messages'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.ts'
 import { deriveRequestIDs, disguiseHeaders } from './ids.ts'
 import { ANONYMOUS_KEY, PROVIDER_ID, PROVIDER_NAME, ZEN_V1, decodeModelsDevMeta, toPiModels } from './models.ts'
-import { guardedStream, type StreamResult } from './stream.ts'
+import { wireLayer, type StreamResult } from './stream.ts'
 
 /**
  * opencode2pi pi extension entry.
@@ -122,6 +117,8 @@ function buildProvider(cat: ModelCatalog): Provider<Api> {
  * to feed hard failures (400/401) back into the catalog as runtime cooldown.
  */
 function zenApi(): Partial<Record<Api, ProviderStreams>> {
+  // Per-request disguise headers + derived ids, plus pi-ai's own retry
+  // (maxRetries) covering transient 408/409/429/5xx with Retry-After backoff.
   const inject = (context: Context, options?: SimpleStreamOptions): SimpleStreamOptions => {
     const ids = deriveRequestIDs(context.messages)
     return {
@@ -138,26 +135,10 @@ function zenApi(): Partial<Record<Api, ProviderStreams>> {
     if (result.outcome === 'error') catalog.reportFailure(modelId, result.status)
     else catalog.reportSuccess(modelId)
   }
-  const model = (m: Model<Api>) => m as Model<'openai-completions'>
-  const modelResponses = (m: Model<Api>) => m as Model<'openai-responses'>
-  const modelMessages = (m: Model<Api>) => m as Model<'anthropic-messages'>
-  const guardStream = (inner: AsyncIterable<unknown>, modelId: string) =>
-    guardedStream(inner as AsyncIterable<{ type: string; error?: { errorMessage?: string } }>, report(modelId)) as unknown as AssistantMessageEventStream
+  // Each protocol gets the same guarded layer; the dispatch key is model.api.
   return {
-    'openai-completions': {
-      stream: (m, context, options) =>
-        guardStream(openaiCompletions.stream(model(m), context, inject(context, options) as OpenAICompletionsOptions), m.id),
-      streamSimple: (m, context, options) => guardStream(openaiCompletions.streamSimple(model(m), context, inject(context, options)), m.id),
-    },
-    'openai-responses': {
-      stream: (m, context, options) =>
-        guardStream(openaiResponses.stream(modelResponses(m), context, inject(context, options) as OpenAIResponsesOptions), m.id),
-      streamSimple: (m, context, options) => guardStream(openaiResponses.streamSimple(modelResponses(m), context, inject(context, options)), m.id),
-    },
-    'anthropic-messages': {
-      stream: (m, context, options) =>
-        guardStream(anthropicMessages.stream(modelMessages(m), context, inject(context, options) as AnthropicOptions), m.id),
-      streamSimple: (m, context, options) => guardStream(anthropicMessages.streamSimple(modelMessages(m), context, inject(context, options)), m.id),
-    },
+    'openai-completions': wireLayer(openaiCompletions as unknown as ProviderStreams, inject, report),
+    'openai-responses': wireLayer(openaiResponses as unknown as ProviderStreams, inject, report),
+    'anthropic-messages': wireLayer(anthropicMessages as unknown as ProviderStreams, inject, report),
   }
 }

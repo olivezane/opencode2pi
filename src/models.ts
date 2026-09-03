@@ -56,13 +56,18 @@ export function decodeModelsDevMeta(data: unknown): Map<string, ModelMeta> {
   return result
 }
 
+const API_BY_PROTOCOL: Partial<Record<ZenProtocol, string>> = {
+  responses: 'openai-responses',
+  anthropic: 'anthropic-messages',
+  chat: 'openai-completions',
+}
+
 /** Build the pi model list for the picker: ids already decided free by the catalog. */
 export function toPiModels(ids: string[], meta: Map<string, ModelMeta>, protocols: Map<string, ZenProtocol> = new Map()): Array<Model<Api>> {
   return ids.map((id) => {
     const m = meta.get(id)
     const protocol = protocols.get(id)
-    const api =
-      protocol === 'responses' ? 'openai-responses' : protocol === 'anthropic' ? 'anthropic-messages' : 'openai-completions'
+    const api = (protocol && API_BY_PROTOCOL[protocol]) || 'openai-completions'
     return {
       id,
       name: m?.name ?? id,

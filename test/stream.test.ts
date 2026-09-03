@@ -1,7 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { guardedStream, statusFromErrorMessage, type StreamResult } from '../src/stream.ts'
+import type { Api, Context, Model, ProviderStreams, SimpleStreamOptions } from '@earendil-works/pi-ai'
+
+import { guardedStream, statusFromErrorMessage, wireLayer, type StreamResult } from '../src/stream.ts'
 
 test('statusFromErrorMessage reads pi-ai\u2019s provider error formats', () => {
   assert.equal(statusFromErrorMessage('400: Invalid model'), 400)
@@ -38,6 +40,40 @@ test('guardedStream reports error with the parsed status', async () => {
     // consumed fully
   }
   assert.deepEqual(results, [{ outcome: 'error', status: 400 }])
+})
+
+test('wireLayer delegates to the implementation, applies inject and reports through the guard', async () => {
+  const results: StreamResult[] = []
+  const seen: string[] = []
+  const fakeSource = () =>
+    (async function* () {
+      yield { type: 'start' }
+      yield { type: 'done' }
+    })() as AsyncIterable<unknown>
+  const implementation = {
+    stream: (_m: unknown, _c: unknown, options: unknown) => {
+      seen.push('stream')
+      assert.equal((options as { apiKey?: string }).apiKey, 'public', 'inject is applied')
+      return fakeSource()
+    },
+    streamSimple: (_m: unknown, _c: unknown, options: unknown) => {
+      seen.push('streamSimple')
+      assert.equal((options as { apiKey?: string }).apiKey, 'public', 'inject is applied')
+      return fakeSource()
+    },
+  } as unknown as ProviderStreams
+  const inject = (_context: Context, options?: SimpleStreamOptions): SimpleStreamOptions => ({ ...options, apiKey: 'public' })
+  const report = (_modelId: string) => (result: StreamResult) => results.push(result)
+  const layer = wireLayer(implementation, inject, report)
+
+  for await (const _ of layer.stream({ id: 'm', provider: 'p' } as unknown as Model<Api>, {} as Context, {})) {
+    // consumed
+  }
+  for await (const _ of layer.streamSimple({ id: 'm', provider: 'p' } as unknown as Model<Api>, {} as Context, {})) {
+    // consumed
+  }
+  assert.deepEqual(seen, ['stream', 'streamSimple'])
+  assert.deepEqual(results, [{ outcome: 'success' }, { outcome: 'success' }])
 })
 
 test('guardedStream never lets an observer throw break the stream', async () => {
