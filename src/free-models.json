@@ -5,10 +5,6 @@
       "verified": "2026-09-03"
     },
     {
-      "id": "laguna-s-2.1-free",
-      "verified": "2026-09-03"
-    },
-    {
       "id": "ling-3.0-flash-fin-free",
       "verified": "2026-09-03"
     },
@@ -45,5 +41,11 @@
       "lastCode": 401
     }
   ],
-  "pending": []
+  "pending": [
+    {
+      "id": "laguna-s-2.1-free",
+      "firstFailed": "2026-09-05",
+      "lastCode": 401
+    }
+  ]
 }
