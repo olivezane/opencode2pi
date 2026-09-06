@@ -10,9 +10,10 @@ import {
   type ProviderStreams,
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai'
-import * as openaiCompletions from '@earendil-works/pi-ai/api/openai-completions'
-import * as openaiResponses from '@earendil-works/pi-ai/api/openai-responses'
-import * as anthropicMessages from '@earendil-works/pi-ai/api/anthropic-messages'
+// pi's extension loader only aliases the root / compat / oauth / providers/all
+// pi-ai entrypoints (docs/packages.md); deep `api/*` subpath imports fail to
+// resolve on a fresh install. The compat entry re-exports the api factories.
+import { anthropicMessagesApi, openAICompletionsApi, openAIResponsesApi } from '@earendil-works/pi-ai/compat'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.ts'
@@ -137,8 +138,8 @@ function zenApi(): Partial<Record<Api, ProviderStreams>> {
   }
   // Each protocol gets the same guarded layer; the dispatch key is model.api.
   return {
-    'openai-completions': wireLayer(openaiCompletions as unknown as ProviderStreams, inject, report),
-    'openai-responses': wireLayer(openaiResponses as unknown as ProviderStreams, inject, report),
-    'anthropic-messages': wireLayer(anthropicMessages as unknown as ProviderStreams, inject, report),
+    'openai-completions': wireLayer(openAICompletionsApi(), inject, report),
+    'openai-responses': wireLayer(openAIResponsesApi(), inject, report),
+    'anthropic-messages': wireLayer(anthropicMessagesApi(), inject, report),
   }
 }
