@@ -78,11 +78,47 @@ test('toPiModels builds complete pi models, defaulting what metadata lacks', () 
   assert.equal(qwen.contextWindow, 262144)
   assert.equal(qwen.maxTokens, 65536)
 
-  // no metadata at all: id as name, text-only, zero cost, conservative defaults
-  const bare = models[1]!
-  assert.equal(bare.name, 'hy3-free')
+  // no metadata and not builtin: id as name, text-only, zero cost, conservative defaults
+  const modelsWithUnknown = toPiModels(['unknown-free'], new Map())
+  const bare = modelsWithUnknown[0]!
+  assert.equal(bare.name, 'unknown-free')
   assert.deepEqual(bare.input, ['text'])
   assert.deepEqual(bare.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
   assert.equal(bare.contextWindow, 262144)
   assert.equal(bare.maxTokens, 32768)
+})
+
+test('toPiModels incorporates builtin models matching /login behavior', () => {
+  const models = toPiModels(['big-pickle', 'muse-spark-1.2-contributor-free', 'hy3-free'], new Map())
+  assert.equal(models.length, 3)
+
+  const pickle = models.find((m) => m.id === 'big-pickle')!
+  assert.equal(pickle.provider, PROVIDER_ID)
+  assert.equal(pickle.name, 'Big Pickle')
+  assert.equal(pickle.api, 'openai-completions')
+  assert.deepEqual(pickle.compat, {
+    supportsStore: false,
+    supportsDeveloperRole: false,
+    maxTokensField: 'max_tokens',
+  })
+
+  const muse = models.find((m) => m.id === 'muse-spark-1.2-contributor-free')!
+  assert.equal(muse.provider, PROVIDER_ID)
+  assert.equal(muse.api, 'openai-responses')
+  assert.deepEqual(muse.compat, {
+    sessionAffinityFormat: 'openai-nosession',
+  })
+  assert.deepEqual(muse.thinkingLevelMap, {
+    off: null,
+    minimal: 'minimal',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+    max: null,
+  })
+
+  const hy3 = models.find((m) => m.id === 'hy3-free')!
+  assert.equal(hy3.provider, PROVIDER_ID)
+  assert.equal(hy3.name, 'Hy3 Free')
 })

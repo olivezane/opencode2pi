@@ -13,7 +13,12 @@ import {
 // pi's extension loader only aliases the root / compat / oauth / providers/all
 // pi-ai entrypoints (docs/packages.md); deep `api/*` subpath imports fail to
 // resolve on a fresh install. The compat entry re-exports the api factories.
-import { anthropicMessagesApi, openAICompletionsApi, openAIResponsesApi } from '@earendil-works/pi-ai/compat'
+import {
+  anthropicMessagesApi,
+  googleGenerativeAIApi,
+  openAICompletionsApi,
+  openAIResponsesApi,
+} from '@earendil-works/pi-ai/compat'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.ts'
@@ -122,13 +127,15 @@ function zenApi(): Partial<Record<Api, ProviderStreams>> {
   // (maxRetries) covering transient 408/409/429/5xx with Retry-After backoff.
   const inject = (context: Context, options?: SimpleStreamOptions): SimpleStreamOptions => {
     const ids = deriveRequestIDs(context.messages)
+    const apiKey = options?.apiKey || ANONYMOUS_KEY
+    const sessionId = options?.sessionId || ids.session
     return {
       ...options,
-      apiKey: ANONYMOUS_KEY,
-      sessionId: ids.session,
-      headers: { ...options?.headers, ...disguiseHeaders(ids) },
-      maxRetries: 1,
-      maxRetryDelayMs: 30_000,
+      apiKey,
+      sessionId,
+      headers: { ...disguiseHeaders(ids), ...options?.headers },
+      maxRetries: options?.maxRetries ?? 1,
+      maxRetryDelayMs: options?.maxRetryDelayMs ?? 30_000,
     }
   }
   // Runtime feedback from the terminal stream event into the catalog.
@@ -141,5 +148,6 @@ function zenApi(): Partial<Record<Api, ProviderStreams>> {
     'openai-completions': wireLayer(openAICompletionsApi(), inject, report),
     'openai-responses': wireLayer(openAIResponsesApi(), inject, report),
     'anthropic-messages': wireLayer(anthropicMessagesApi(), inject, report),
+    'google-generative-ai': wireLayer(googleGenerativeAIApi(), inject, report),
   }
 }

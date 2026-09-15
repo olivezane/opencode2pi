@@ -7,6 +7,7 @@ import { guardedStream, statusFromErrorMessage, wireLayer, type StreamResult } f
 
 test('statusFromErrorMessage reads pi-ai\u2019s provider error formats', () => {
   assert.equal(statusFromErrorMessage('400: Invalid model'), 400)
+  assert.equal(statusFromErrorMessage('opencode (401): Incorrect API key'), 401)
   assert.equal(statusFromErrorMessage('opencode2pi (401): Incorrect API key'), 401)
   assert.equal(statusFromErrorMessage('404 status code (no body)'), 404)
   assert.equal(statusFromErrorMessage('429 Too Many Requests'), 429)
@@ -84,4 +85,34 @@ test('guardedStream never lets an observer throw break the stream', async () => 
     seen.push(event.type)
   }
   assert.deepEqual(seen, ['done'])
+})
+
+test('wireLayer preserves stream.result() for plugins and subagents', async () => {
+  let reported: StreamResult | undefined
+  const fakeImpl = {
+    stream: () => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'done' }
+      },
+      result: async () => ({ role: 'assistant', content: [{ type: 'text', text: 'hello' }] }),
+    }),
+    streamSimple: () => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'done' }
+      },
+      result: async () => ({ role: 'assistant', content: [{ type: 'text', text: 'hello' }] }),
+    }),
+  }
+  const wired = wireLayer(
+    fakeImpl as never,
+    (ctx, opt) => opt || {},
+    () => (result) => {
+      reported = result
+    },
+  )
+  const stream = wired.streamSimple({ id: 'test' } as never, {} as never)
+  assert.equal(typeof stream.result, 'function')
+  const result = await stream.result()
+  assert.equal(result.role, 'assistant')
+  assert.deepEqual(reported, { outcome: 'success' })
 })

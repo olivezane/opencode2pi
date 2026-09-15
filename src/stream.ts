@@ -30,7 +30,7 @@ interface GuardedEvent {
  */
 export function statusFromErrorMessage(message: string | undefined): number | undefined {
   if (!message) return undefined
-  const prefixed = /^[^()]*\((\d{3})\):/.exec(message) // "opencode2pi (401): ..."
+  const prefixed = /^[^()]*\((\d{3})\):/.exec(message) // "opencode (401): ...", "opencode2pi (401): ..."
   const leading = /^(\d{3})\b/.exec(message) // "400: ...", "400 status code ..."
   const status = Number(prefixed?.[1] ?? leading?.[1])
   return Number.isFinite(status) && status > 0 ? status : undefined
@@ -46,11 +46,44 @@ export function wireLayer(
   inject: (context: Context, options?: SimpleStreamOptions) => SimpleStreamOptions,
   report: (modelId: string) => (result: StreamResult) => void,
 ): ProviderStreams {
-  const guard = (inner: AsyncIterable<unknown>, modelId: string) =>
-    guardedStream(inner as AsyncIterable<GuardedEvent>, report(modelId)) as unknown as AssistantMessageEventStream
+  const wrap = (inner: AssistantMessageEventStream, modelId: string): AssistantMessageEventStream => {
+    const onResult = report(modelId)
+    const generator = guardedStream(inner as unknown as AsyncIterable<GuardedEvent>, onResult)
+    return new Proxy(inner, {
+      get(target, prop, receiver) {
+        if (prop === Symbol.asyncIterator) {
+          return () => generator[Symbol.asyncIterator]()
+        }
+        if (prop === 'next' || prop === 'return' || prop === 'throw') {
+          return (generator as any)[prop].bind(generator)
+        }
+        if (prop === 'result') {
+          return async () => {
+            try {
+              const res = await (target as any).result()
+              try {
+                onResult({ outcome: 'success' })
+              } catch {}
+              return res
+            } catch (err) {
+              try {
+                onResult({
+                  outcome: 'error',
+                  status: statusFromErrorMessage(err instanceof Error ? err.message : String(err)),
+                })
+              } catch {}
+              throw err
+            }
+          }
+        }
+        const val = Reflect.get(target, prop, receiver)
+        return typeof val === 'function' ? val.bind(target) : val
+      },
+    })
+  }
   return {
-    stream: (m, context, options) => guard(implementation.stream(m, context, inject(context, options)), m.id),
-    streamSimple: (m, context, options) => guard(implementation.streamSimple(m, context, inject(context, options)), m.id),
+    stream: (m, context, options) => wrap(implementation.stream(m, context, inject(context, options)), m.id),
+    streamSimple: (m, context, options) => wrap(implementation.streamSimple(m, context, inject(context, options)), m.id),
   }
 }
 

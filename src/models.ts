@@ -1,4 +1,5 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
+import { getBuiltinModel } from '@earendil-works/pi-ai/providers/all'
 
 import type { ZenProtocol } from './catalog.ts'
 import { ZEN_BASE_URL, forModelsDev } from './catalog.ts'
@@ -63,11 +64,26 @@ const API_BY_PROTOCOL: Partial<Record<ZenProtocol, string>> = {
 }
 
 /** Build the pi model list for the picker: ids already decided free by the catalog. */
-export function toPiModels(ids: string[], meta: Map<string, ModelMeta>, protocols: Map<string, ZenProtocol> = new Map()): Array<Model<Api>> {
+export function toPiModels(
+  ids: string[],
+  meta: Map<string, ModelMeta>,
+  protocols: Map<string, ZenProtocol> = new Map(),
+): Array<Model<Api>> {
   return ids.map((id) => {
+    const builtin = (getBuiltinModel as (provider: string, modelId: string) => Model<Api> | undefined)('opencode', id)
     const m = meta.get(id)
+    if (builtin) {
+      return {
+        ...builtin,
+        provider: PROVIDER_ID,
+        ...(m?.name ? { name: m.name } : {}),
+        ...(m?.contextWindow ? { contextWindow: m.contextWindow } : {}),
+        ...(m?.maxTokens ? { maxTokens: m.maxTokens } : {}),
+        ...(m?.image && !builtin.input.includes('image') ? { input: [...builtin.input, 'image'] } : {}),
+      }
+    }
     const protocol = protocols.get(id)
-    const api = (protocol && API_BY_PROTOCOL[protocol]) || 'openai-completions'
+    const api = ((protocol && API_BY_PROTOCOL[protocol]) || 'openai-completions') as Api
     return {
       id,
       name: m?.name ?? id,
@@ -76,9 +92,20 @@ export function toPiModels(ids: string[], meta: Map<string, ModelMeta>, protocol
       // the Anthropic SDK appends /v1/messages itself; openai layers want /v1
       baseUrl: protocol === 'anthropic' ? ZEN_BASE_URL : ZEN_V1,
       reasoning: m?.reasoning ?? false,
-      // pi-ai defaults reasoning-capable models to effort "none", which Zen
-      // rejects; marking off unsupported skips the reasoning param instead.
-      ...(protocol === 'responses' ? { thinkingLevelMap: { off: null } } : {}),
+      ...(protocol === 'responses'
+        ? {
+            thinkingLevelMap: { off: null },
+            compat: { sessionAffinityFormat: 'openai-nosession' as const },
+          }
+        : api === 'openai-completions'
+          ? {
+              compat: {
+                supportsStore: false,
+                supportsDeveloperRole: false,
+                maxTokensField: 'max_tokens' as const,
+              },
+            }
+          : {}),
       input: m?.image ? ['text', 'image'] : ['text'],
       cost: {
         input: m?.costInput ?? 0,
@@ -88,6 +115,6 @@ export function toPiModels(ids: string[], meta: Map<string, ModelMeta>, protocol
       },
       contextWindow: m?.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
       maxTokens: m?.maxTokens ?? DEFAULT_MAX_TOKENS,
-    }
+    } as Model<Api>
   })
 }
