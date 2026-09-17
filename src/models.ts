@@ -1,7 +1,7 @@
 import type { Api, Model } from '@earendil-works/pi-ai'
 import { getBuiltinModel } from '@earendil-works/pi-ai/providers/all'
 
-import type { ZenProtocol } from './catalog.ts'
+import type { CapabilityMeta, ZenProtocol } from './catalog.ts'
 import { ZEN_BASE_URL, forModelsDev } from './catalog.ts'
 
 /** Identity, used as the provider id in pi's model picker and the data dir name. */
@@ -63,23 +63,34 @@ const API_BY_PROTOCOL: Partial<Record<ZenProtocol, string>> = {
   chat: 'openai-completions',
 }
 
-/** Build the pi model list for the picker: ids already decided free by the catalog. */
+/**
+ * Build the pi model list for the picker: ids already decided free by the
+ * catalog. Limits and modalities prefer the capability catalog (the same
+ * source that declares the protocol) and fall back to models.dev, then to the
+ * builtin pi model, then to a conservative default.
+ */
 export function toPiModels(
   ids: string[],
   meta: Map<string, ModelMeta>,
   protocols: Map<string, ZenProtocol> = new Map(),
+  capabilityMeta: Map<string, CapabilityMeta> = new Map(),
 ): Array<Model<Api>> {
   return ids.map((id) => {
     const builtin = (getBuiltinModel as (provider: string, modelId: string) => Model<Api> | undefined)('opencode', id)
     const m = meta.get(id)
+    const caps = capabilityMeta.get(id)
+    const contextWindow = caps?.contextWindow ?? m?.contextWindow
+    const maxTokens = caps?.maxTokens ?? m?.maxTokens
+    const reasoning = caps?.reasoning ?? m?.reasoning ?? false
+    const image = caps?.image ?? m?.image ?? false
     if (builtin) {
       return {
         ...builtin,
         provider: PROVIDER_ID,
         ...(m?.name ? { name: m.name } : {}),
-        ...(m?.contextWindow ? { contextWindow: m.contextWindow } : {}),
-        ...(m?.maxTokens ? { maxTokens: m.maxTokens } : {}),
-        ...(m?.image && !builtin.input.includes('image') ? { input: [...builtin.input, 'image'] } : {}),
+        ...(contextWindow ? { contextWindow } : {}),
+        ...(maxTokens ? { maxTokens } : {}),
+        ...(image && !builtin.input.includes('image') ? { input: [...builtin.input, 'image'] } : {}),
       }
     }
     const protocol = protocols.get(id)
@@ -91,7 +102,7 @@ export function toPiModels(
       provider: PROVIDER_ID,
       // the Anthropic SDK appends /v1/messages itself; openai layers want /v1
       baseUrl: protocol === 'anthropic' ? ZEN_BASE_URL : ZEN_V1,
-      reasoning: m?.reasoning ?? false,
+      reasoning,
       ...(protocol === 'responses'
         ? {
             thinkingLevelMap: { off: null },
@@ -106,15 +117,15 @@ export function toPiModels(
               },
             }
           : {}),
-      input: m?.image ? ['text', 'image'] : ['text'],
+      input: image ? ['text', 'image'] : ['text'],
       cost: {
         input: m?.costInput ?? 0,
         output: m?.costOutput ?? 0,
         cacheRead: m?.costCacheRead ?? 0,
         cacheWrite: 0,
       },
-      contextWindow: m?.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
-      maxTokens: m?.maxTokens ?? DEFAULT_MAX_TOKENS,
+      contextWindow: contextWindow ?? DEFAULT_CONTEXT_WINDOW,
+      maxTokens: maxTokens ?? DEFAULT_MAX_TOKENS,
     } as Model<Api>
   })
 }

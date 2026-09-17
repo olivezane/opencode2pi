@@ -27,6 +27,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { CAPABILITIES_URL, fetchZenCapabilities, isRouteable } from '../src/catalog.ts'
+import { canonicalSessionID, opencodeUserAgent } from '../src/ids.ts'
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 const LEDGER_PATH = resolve(ROOT, 'src/free-models.json')
@@ -41,13 +42,14 @@ const MAX_TOKENS = 4
 const HARD_CODES = new Set([400, 401])
 
 const today = () => new Date().toISOString().slice(0, 10)
-const userAgent = () => `opencode/1.18.21 (${process.platform} ${process.arch}; node${process.versions.node})`
+// Canonical session shape: the free tier rejects anything else with 403.
+const PROBE_SESSION = canonicalSessionID('opencode2pi:probe')
 const headers = (extra = {}) => ({
   authorization: `Bearer ${ANONYMOUS}`,
-  'user-agent': userAgent(),
+  'user-agent': opencodeUserAgent(),
   'x-opencode-client': 'cli',
-  'x-session-affinity': 'ses_probe',
-  'X-Session-Id': 'ses_probe',
+  'x-session-affinity': PROBE_SESSION,
+  'X-Session-Id': PROBE_SESSION,
   ...extra,
 })
 
@@ -63,7 +65,7 @@ async function main() {
   // rather than rewrite the ledger from an incomplete picture.
   let caps = null
   try {
-    caps = await fetchZenCapabilities(CAPABILITIES_URL, fetch, userAgent())
+    caps = await fetchZenCapabilities(CAPABILITIES_URL, fetch, opencodeUserAgent())
   } catch (err) {
     console.warn(`capability catalog unavailable (${err instanceof Error ? err.message : String(err)}); probing every candidate`)
   }

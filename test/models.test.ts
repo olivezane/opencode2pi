@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
+import type { CapabilityMeta } from '../src/catalog.ts'
 import { PROVIDER_ID, ZEN_V1, decodeModelsDevMeta, toPiModels } from '../src/models.ts'
 
 // Real models.dev api.json shape (opencode section), trimmed.
@@ -39,6 +40,27 @@ test('decodeModelsDevMeta prefers the opencode section and maps the metadata fie
   assert.equal(meta.get('big-pickle')?.contextWindow, undefined)
   assert.equal(decodeModelsDevMeta({ openai: {} }).size, 0)
   assert.equal(decodeModelsDevMeta(null).size, 0)
+})
+
+test('capability catalog metadata beats models.dev for limits and modalities', () => {
+  const meta = decodeModelsDevMeta(payload)
+  const caps = new Map<string, CapabilityMeta>([
+    ['qwen3-coder-next', { contextWindow: 1000000, maxTokens: 64000, reasoning: true, image: true }],
+  ])
+  const withCaps = toPiModels(['qwen3-coder-next'], meta, new Map(), caps)[0]!
+  assert.equal(withCaps.contextWindow, 1000000, 'capability catalog limit wins over models.dev')
+  assert.equal(withCaps.maxTokens, 64000)
+  assert.equal(withCaps.reasoning, true)
+  assert.deepEqual(withCaps.input, ['text', 'image'])
+
+  // absent capability metadata (the catalog has not landed) degrades to models.dev
+  const withoutCaps = toPiModels(['qwen3-coder-next'], meta)[0]!
+  assert.equal(withoutCaps.contextWindow, 262144)
+  assert.equal(withoutCaps.maxTokens, 65536)
+
+  // a catalog limit also reaches builtin models, which have their own numbers
+  const builtin = toPiModels(['big-pickle'], meta, new Map(), new Map([['big-pickle', { maxTokens: 12345 }]]))[0]!
+  assert.equal(builtin.maxTokens, 12345)
 })
 
 test('responses-native models mark off-thinking unsupported so pi-ai skips effort none', () => {

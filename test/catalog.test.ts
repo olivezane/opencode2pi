@@ -2,12 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   decodeModelsDev,
-  decide,
+  decodeProtocolDocs,
   decodeZenCapabilities,
+  decide,
   fetchZenModels,
   fetchZenCapabilities,
   isFreeModel,
   isRouteable,
+  mergeProtocolDocs,
   ModelCatalog,
   protocolForSdk,
 } from '../src/catalog.ts'
@@ -280,15 +282,81 @@ function freeCatalog() {
   return { catalog, clock }
 }
 
+test('decodeZenCapabilities carries real limits and modalities per model', () => {
+  const caps = decodeZenCapabilities({
+    opencode: {
+      id: 'opencode',
+      api: 'https://opencode.ai/zen/v1',
+      npm: '@ai-sdk/openai-compatible',
+      models: {
+        'claude-free': {
+          id: 'claude-free',
+          provider: { npm: '@ai-sdk/anthropic' },
+          limit: { context: 1000000, output: 64000 },
+          reasoning: true,
+          modalities: { input: ['text', 'image', 'pdf'] },
+        },
+        'bare-free': { id: 'bare-free', provider: {} },
+      },
+    },
+  })
+  assert.deepEqual(caps.metadata.get('claude-free'), {
+    contextWindow: 1000000,
+    maxTokens: 64000,
+    reasoning: true,
+    image: true,
+  })
+  assert.deepEqual(caps.metadata.get('bare-free'), {
+    contextWindow: undefined,
+    maxTokens: undefined,
+    reasoning: false,
+    image: false,
+  })
+})
+
+test('decodeProtocolDocs reads the published endpoint table', () => {
+  const markdown = [
+    '| Model | Model ID | Endpoint | AI SDK Package |',
+    '| ----- | -------- | -------- | -------------- |',
+    '| Claude | claude-fable-5 | `https://opencode.ai/zen/v1/messages` | `@ai-sdk/anthropic` |',
+    '| GPT | gpt-6-astra | `https://opencode.ai/zen/v1/responses` | `@ai-sdk/openai` |',
+    '| DeepSeek | deepseek-v4-pro | `https://opencode.ai/zen/v1/chat/completions` | `@ai-sdk/openai-compatible` |',
+    // no pi-ai layer: ignored, not invented
+    '| Gemini | gemini-3.1-pro | `https://opencode.ai/zen/v1/models/gemini-3.1-pro` | `@ai-sdk/google` |',
+  ].join('\n')
+  const documented = decodeProtocolDocs(markdown)
+  assert.deepEqual([...documented], [
+    ['claude-fable-5', 'anthropic'],
+    ['gpt-6-astra', 'responses'],
+    ['deepseek-v4-pro', 'chat'],
+  ])
+  assert.equal(documented.has('gemini-3.1-pro'), false, 'the Gemini route has no pi-ai layer')
+  assert.equal(decodeProtocolDocs('# no table here').size, 0)
+})
+
+test('documented endpoints complete the catalog and clear unknown-SDK hiding', () => {
+  const caps = decodeZenCapabilities(capabilityBody)
+  assert.ok(!isRouteable(caps, 'weird-free'), 'unknown SDK starts hidden')
+  const merged = mergeProtocolDocs(caps, new Map([['weird-free', 'chat']]))
+  assert.ok(isRouteable(merged, 'weird-free'), 'a documented endpoint makes it routeable')
+  assert.equal(merged.protocols.get('weird-free'), 'chat')
+  assert.equal(isRouteable(caps, 'weird-free'), false, 'the source object is untouched')
+})
+
 test('reportFailure hard codes start a cooldown that hides the model, then it returns', async () => {
   const { catalog, clock } = freeCatalog()
   try {
     await catalog.refreshOnce()
     assert.deepEqual(catalog.list(), ['qwen-free'])
-    catalog.reportFailure('qwen-free', 400)
-    assert.equal(catalog.decision('qwen-free').allowed, false)
-    assert.equal(catalog.decision('qwen-free').source, 'runtime_cooldown')
-    assert.deepEqual(catalog.list(), [])
+    // 400/401 reject the model, 403 rejects the credential/tier: all three hide it.
+    // Flaky statuses (429/5xx) stay pi-ai's retry domain.
+    for (const status of [400, 401, 403]) {
+      clock.value = 0
+      catalog.reportFailure('qwen-free', status)
+      assert.equal(catalog.decision('qwen-free').allowed, false, `status ${status} must hide the model`)
+      assert.equal(catalog.decision('qwen-free').source, 'runtime_cooldown')
+      assert.deepEqual(catalog.list(), [])
+    }
     // after the base cooldown the model is pickable again (ledger still decides freshness)
     clock.value = 10 * 60 * 1000 + 1
     assert.deepEqual(catalog.list(), ['qwen-free'])

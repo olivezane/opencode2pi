@@ -87,7 +87,7 @@ pi session
    ▼
 pi extension (src/index.ts) — registers provider "opencode2pi"
    │  pi-ai openai-completions stream
-   │  + CLI-identical headers:
+   │  + CLI-identical headers (applied after pi's own ones):
    │    user-agent: opencode/…
    │    x-opencode-client, x-opencode-session, x-session-affinity,
    │    X-Session-Id, x-opencode-request, x-opencode-project
@@ -95,9 +95,11 @@ pi extension (src/index.ts) — registers provider "opencode2pi"
 https://opencode.ai/zen/v1        ← Authorization: Bearer public
 ```
 
-- **Session correlation** — session/project ids are SHA-256 derived from the
-  conversation's first user turn (stable per conversation, non-reversible),
-  and each request gets a fresh random id, mirroring the CLI.
+- **Session correlation** — the session is the canonical OpenCode shape
+  (`ses_` + 12 hex + 14 Base62) the free tier requires; a declared pi session
+  is hashed into it deterministically, so one pi session keeps one upstream
+  session. Project ids are SHA-256 derived the same way, each request gets a
+  fresh random id, and pi's own attribution headers are overridden.
 - **Registration model** ([ADR 0001](docs/adr/0001-static-list-at-startup-background-catalog-refresh.md))
   — the extension registers the verified static list immediately, so the
   picker is never empty and startup never blocks on the network; the live
@@ -105,9 +107,10 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 - **Catalog fallback chain** — S1: live `GET /v1/models`; S2: models.dev
   pricing metadata decides "free"; S3: a compile-time verified static list.
   A disk cache (~7-day TTL) covers upstream outages.
-- **Model metadata** — context window, max output, reasoning, image input and
-  pricing are parsed from the same models.dev payload used for the free
-  decision; models without metadata keep conservative defaults.
+- **Model metadata** — limits, reasoning and image input come from OpenCode's
+  capability catalog (the source that also declares the protocol), falling
+  back to the models.dev payload used for the free decision, then to
+  conservative defaults. Pricing always comes from models.dev (zero here).
 
 ## Health & troubleshooting
 
@@ -129,6 +132,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 | The list looks short | The anonymous lane only serves the free subset (paid models answer 401) — that is the whole catalog, not a bug. Ids the lane fails on are banned via the probe ledger (`staticUnavailable` in `src/catalog.ts`). |
 | `lastError: "fetch failed"` persisting | Outbound HTTPS to `opencode.ai` blocked; check proxy/VPN rules. |
 | Rate-limit errors in chat | The anonymous lane is quota-per-IP; switch network node or wait. |
+| `403 FreeTierError` ("free tier can only be used from within OpenCode") | The request did not look like CLI traffic: the session was not in the canonical shape, or another layer overwrote `x-opencode-session`. Update the package; if it persists, an unrelated extension is stamping provider headers. |
 
 ## Security
 

@@ -81,7 +81,7 @@ pi 会话
    ▼
 pi 扩展 (src/index.ts) —— 注册 provider "opencode2pi"
    │  pi-ai openai-completions 流
-   │  + CLI 同源请求头：
+   │  + CLI 同源请求头（在 pi 自带的归属头之后覆盖）：
    │    user-agent: opencode/…
    │    x-opencode-client, x-opencode-session, x-session-affinity,
    │    X-Session-Id, x-opencode-request, x-opencode-project
@@ -89,15 +89,18 @@ pi 扩展 (src/index.ts) —— 注册 provider "opencode2pi"
 https://opencode.ai/zen/v1        ← Authorization: Bearer public
 ```
 
-- **会话关联**——session/project id 由会话首条用户消息 SHA-256 派生（会话内
-  稳定、不可逆），每个请求另带新鲜随机 id，与 CLI 行为一致。
+- **会话关联**——session 采用免费层要求的规范形状（`ses_` + 12 hex +
+  14 Base62）；pi 声明的 session 被确定性哈希成该形状，因此一个 pi 会话对应一个
+  上游会话。project id 同样 SHA-256 派生，每个请求另带新鲜随机 id，并覆盖 pi
+  自己加的归属请求头。
 - **注册模型**（[ADR 0001](docs/adr/0001-static-list-at-startup-background-catalog-refresh.md)）
   ——扩展先注册已验证的静态清单，选择器永不空、启动永不因网络阻塞；实时目录
   后台刷新并原地替换模型列表。
 - **目录 fallback 链**——S1：实时 `GET /v1/models`；S2：models.dev 价格元数据
   判定"免费"；S3：编译期验证过的静态清单。磁盘缓存（约 7 天 TTL）兜底上游故障。
-- **模型元数据**——上下文窗口、输出上限、reasoning、图片输入与价格从同一份
-  models.dev payload 解析（免费判定也用它）；无元数据的模型保持保守默认值。
+- **模型元数据**——上下文窗口、输出上限、reasoning、图片输入取自 OpenCode 的
+  capability catalog（与协议同源），其次回退到用于免费判定的 models.dev
+  payload，最后是保守默认值。价格始终来自 models.dev（此处为 0）。
 
 ## 健康与排障
 
@@ -119,6 +122,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 | 列表看起来很短 | 匿名通道只服务免费子集（付费模型一律 401）——这就是全部目录，不是 bug。匿名通道带不动的 id 经探针台账（`src/catalog.ts` 的 `staticUnavailable`）禁用。 |
 | `lastError: "fetch failed"` 持续 | 到 `opencode.ai` 的出站 HTTPS 被阻断；检查代理/VPN 规则。 |
 | 聊天中报限流错误 | 匿名通道按 IP 限额；换网络节点或稍等。 |
+| `403 FreeTierError`（“free tier can only be used from within OpenCode”） | 请求不像 CLI 流量：session 不是规范形状，或被其它层覆盖了 `x-opencode-session`。先更新本包；仍复现则是有别的扩展在改写 provider 请求头。 |
 
 ## 安全
 

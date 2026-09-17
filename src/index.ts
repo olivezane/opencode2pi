@@ -15,7 +15,6 @@ import {
 // resolve on a fresh install. The compat entry re-exports the api factories.
 import {
   anthropicMessagesApi,
-  googleGenerativeAIApi,
   openAICompletionsApi,
   openAIResponsesApi,
 } from '@earendil-works/pi-ai/compat'
@@ -108,7 +107,7 @@ function buildProvider(cat: ModelCatalog): Provider<Api> {
         resolve: async () => ({ auth: { apiKey: ANONYMOUS_KEY }, source: 'anonymous lane' }),
       },
     },
-    models: toPiModels(cat.list(), decodeModelsDevMeta(cat.rawMetadata), cat.protocols),
+    models: toPiModels(cat.list(), decodeModelsDevMeta(cat.rawMetadata), cat.protocols, cat.capabilityMetadata),
     api: zenApi(),
   })
 }
@@ -120,20 +119,29 @@ function buildProvider(cat: ModelCatalog): Provider<Api> {
  *
  * Reliability additions: pi-ai's own retry (maxRetries) covers transient
  * 408/409/429/5xx with Retry-After-aware backoff; the guard wraps the stream
- * to feed hard failures (400/401) back into the catalog as runtime cooldown.
+ * to feed hard failures (400/401/403) back into the catalog as runtime cooldown.
  */
 function zenApi(): Partial<Record<Api, ProviderStreams>> {
   // Per-request disguise headers + derived ids, plus pi-ai's own retry
   // (maxRetries) covering transient 408/409/429/5xx with Retry-After backoff.
+  //
+  // The disguise goes LAST on purpose. pi stamps its own attribution on every
+  // request to any `opencode*` provider or `opencode.ai` baseUrl
+  // (pi-coding-agent core/provider-attribution.js getSessionHeaders):
+  //   x-opencode-session: <pi session id>   x-opencode-client: pi
+  // Those arrive in `options.headers`, and the raw pi session id is not a
+  // canonical OpenCode session — the free tier answers 403 FreeTierError for
+  // any other shape (since 2026-09-16). The CLI-identical set must win.
   const inject = (context: Context, options?: SimpleStreamOptions): SimpleStreamOptions => {
-    const ids = deriveRequestIDs(context.messages)
+    const ids = deriveRequestIDs(context.messages, { sessionId: options?.sessionId, metadata: options?.metadata })
     const apiKey = options?.apiKey || ANONYMOUS_KEY
-    const sessionId = options?.sessionId || ids.session
     return {
       ...options,
       apiKey,
-      sessionId,
-      headers: { ...disguiseHeaders(ids), ...options?.headers },
+      // Any header the SDK derives from sessionId must carry the canonical
+      // session too, never pi's raw one.
+      sessionId: ids.session,
+      headers: { ...options?.headers, ...disguiseHeaders(ids) },
       maxRetries: options?.maxRetries ?? 1,
       maxRetryDelayMs: options?.maxRetryDelayMs ?? 30_000,
     }
@@ -148,6 +156,5 @@ function zenApi(): Partial<Record<Api, ProviderStreams>> {
     'openai-completions': wireLayer(openAICompletionsApi(), inject, report),
     'openai-responses': wireLayer(openAIResponsesApi(), inject, report),
     'anthropic-messages': wireLayer(anthropicMessagesApi(), inject, report),
-    'google-generative-ai': wireLayer(googleGenerativeAIApi(), inject, report),
   }
 }
