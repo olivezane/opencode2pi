@@ -27,6 +27,7 @@ jobs:
             echo "No ledger changes — nothing to commit."
             exit 0
           fi
+          npm ci
           npm test || { echo "Tests failed — abandoning ledger update."; exit 1; }
           git config user.name "github-actions[bot]"
           git config user.email "actions@users.noreply.github.com"
