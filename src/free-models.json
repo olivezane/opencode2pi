@@ -27,10 +27,6 @@
     {
       "id": "nemotron-3.5-lightning-free",
       "verified": "2026-09-01"
-    },
-    {
-      "id": "union-alpha",
-      "verified": "2026-09-17"
     }
   ],
   "unavailable": [
@@ -50,5 +46,11 @@
       "lastCode": 401
     }
   ],
-  "pending": []
+  "pending": [
+    {
+      "id": "union-alpha",
+      "firstFailed": "2026-09-18",
+      "lastCode": 401
+    }
+  ]
 }
