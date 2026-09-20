@@ -111,7 +111,7 @@ test('toPiModels builds complete pi models, defaulting what metadata lacks', () 
 })
 
 test('toPiModels incorporates builtin models matching /login behavior', () => {
-  const models = toPiModels(['big-pickle', 'muse-spark-1.2-contributor-free', 'hy3-free'], new Map())
+  const models = toPiModels(['big-pickle', 'muse-spark-1.2-contributor-free', 'mimo-v2.5-free'], new Map())
   assert.equal(models.length, 3)
 
   const pickle = models.find((m) => m.id === 'big-pickle')!
@@ -140,7 +140,7 @@ test('toPiModels incorporates builtin models matching /login behavior', () => {
     max: null,
   })
 
-  const hy3 = models.find((m) => m.id === 'hy3-free')!
-  assert.equal(hy3.provider, PROVIDER_ID)
-  assert.equal(hy3.name, 'Hy3 Free')
+  const mimo = models.find((m) => m.id === 'mimo-v2.5-free')!
+  assert.equal(mimo.provider, PROVIDER_ID)
+  assert.equal(mimo.name, 'MiMo V2.5 Free')
 })

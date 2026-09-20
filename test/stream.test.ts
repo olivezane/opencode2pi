@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
+import { normalizeContext } from '@earendil-works/pi-ai'
 import type { Api, Context, Model, ProviderStreams, SimpleStreamOptions } from '@earendil-works/pi-ai'
 
 import { guardedStream, statusFromErrorMessage, wireLayer, type StreamResult } from '../src/stream.ts'
@@ -67,10 +68,11 @@ test('wireLayer delegates to the implementation, applies inject and reports thro
   const report = (_modelId: string) => (result: StreamResult) => results.push(result)
   const layer = wireLayer(implementation, inject, report)
 
-  for await (const _ of layer.stream({ id: 'm', provider: 'p' } as unknown as Model<Api>, {} as Context, {})) {
+  const context = normalizeContext({ messages: [] })
+  for await (const _ of layer.stream({ id: 'm', provider: 'p' } as unknown as Model<Api>, context, {})) {
     // consumed
   }
-  for await (const _ of layer.streamSimple({ id: 'm', provider: 'p' } as unknown as Model<Api>, {} as Context, {})) {
+  for await (const _ of layer.streamSimple({ id: 'm', provider: 'p' } as unknown as Model<Api>, context, {})) {
     // consumed
   }
   assert.deepEqual(seen, ['stream', 'streamSimple'])
