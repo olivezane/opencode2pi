@@ -28,6 +28,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { CAPABILITIES_URL, fetchZenCapabilities, isRouteable } from '../src/catalog.ts'
 import { canonicalSessionID, opencodeUserAgent } from '../src/ids.ts'
+// The lane-wide agent shape, shared with the runtime payload hook so a probe
+// and a real request can never disagree about what the free tier accepts.
+import { agentTools } from '../src/shape.ts'
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 const LEDGER_PATH = resolve(ROOT, 'src/free-models.json')
@@ -72,12 +75,23 @@ async function main() {
   const candidates = selectCandidates(zenIds, prices, ledger, caps)
 
   const verdicts = new Map()
+  let gateFailures = 0
   for (const id of candidates) {
     const protocol = caps?.protocols.get(id) ?? 'chat'
-    const status = await probe(id, protocol)
+    const { status, gate } = await probe(id, protocol)
+    if (gate) gateFailures++
     verdicts.set(id, status)
-    console.log(`${String(status).padEnd(8)} ${id}`)
+    console.log(`${String(status).padEnd(8)} ${id}${gate ? '  <- FreeTierError: probe request shape rejected' : ''}`)
     await new Promise((r) => setTimeout(r, PROBE_SPACING_MS))
+  }
+
+  // A lane-wide shape rejection is not a per-model verdict. Writing the
+  // ledger here would freeze every entry as indeterminate and hide the
+  // breakage, so refuse to write and fail loudly instead.
+  if (gateFailures > 0 && gateFailures === candidates.length) {
+    throw new Error(
+      `${gateFailures} probes answered 403 FreeTierError: the free tier stopped accepting the probe request shape (agentTools)`,
+    )
   }
 
   const next = { verified: [], unavailable: [], pending: [] }
@@ -138,7 +152,7 @@ export function probeRequest(id, protocol) {
     return {
       url: `${ZEN_BASE}/v1/responses`,
       headers: base,
-      body: { model: id, input: 'hi', stream: false },
+      body: { model: id, input: 'hi', stream: true, tools: agentTools(protocol) },
     }
   }
   if (protocol === 'anthropic') {
@@ -147,13 +161,25 @@ export function probeRequest(id, protocol) {
     return {
       url: `${ZEN_BASE}/v1/messages`,
       headers: { ...rest, 'x-api-key': ANONYMOUS },
-      body: { model: id, messages: [{ role: 'user', content: 'hi' }], max_tokens: MAX_TOKENS },
+      body: {
+        model: id,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: MAX_TOKENS,
+        stream: true,
+        tools: agentTools(protocol),
+      },
     }
   }
   return {
     url: `${ZEN_BASE}/v1/chat/completions`,
     headers: base,
-    body: { model: id, messages: [{ role: 'user', content: 'hi' }], max_tokens: MAX_TOKENS, stream: false },
+    body: {
+      model: id,
+      messages: [{ role: 'user', content: 'hi' }],
+      max_tokens: MAX_TOKENS,
+      stream: true,
+      tools: agentTools(protocol),
+    },
   }
 }
 
@@ -198,10 +224,12 @@ async function probe(id, protocol = 'chat') {
       body: JSON.stringify(request.body),
       signal: controller.signal,
     })
-    await response.text()
-    return response.status
+    const text = await response.text()
+    // FreeTierError means the lane rejected the request shape, not the model.
+    const gate = response.status === 403 && text.includes('FreeTierError')
+    return { status: response.status, gate }
   } catch {
-    return 0 // network/abort: indeterminate
+    return { status: 0, gate: false } // network/abort: indeterminate
   } finally {
     clearTimeout(timer)
   }

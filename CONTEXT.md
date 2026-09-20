@@ -34,6 +34,18 @@ or per conversation) and per request (random-ish), mirroring CLI behavior.
 Non-reversible. Colloquially "the ids".
 _Avoid_: fake session id
 
+**Agent shape**:
+The request body the free tier accepts since 2026-09-20: streaming enabled
+plus `bash` and `read` present in `tools` (the names are what count, the
+definitions can be minimal). A body missing either half is answered with the
+same `403 FreeTierError` as a bad session, so a request without tools looks
+like a broken lane rather than a rejected shape. pi sends its built-in tools
+on every normal run, so only tool-free invocations (`-nt`, `--no-builtin-tools`
+with no extension tools) need the tools synthesized. Verified on chat and
+responses across every free model; a single tool, `bash` + `edit`, and
+`stream: false` all fail.
+_Avoid_: agent request, CLI shape
+
 **Canonical session**:
 The only session shape the free tier accepts since 2026-09-16:
 `ses_` + 12 lowercase hex characters + 14 Base62 characters. A signal that

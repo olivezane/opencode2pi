@@ -6,6 +6,7 @@ import {
   createProvider,
   type Api,
   type Context,
+  type Model,
   type Provider,
   type ProviderStreams,
   type SimpleStreamOptions,
@@ -24,6 +25,7 @@ import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.
 import { deriveRequestIDs, disguiseHeaders } from './ids.ts'
 import { ANONYMOUS_KEY, PROVIDER_ID, PROVIDER_NAME, ZEN_V1, decodeModelsDevMeta, toPiModels } from './models.ts'
 import { wireLayer, type StreamResult } from './stream.ts'
+import { agentShape, type ShapeProtocol } from './shape.ts'
 
 /**
  * opencode2pi pi extension entry.
@@ -151,10 +153,24 @@ function zenApi(): Partial<Record<Api, ProviderStreams>> {
     if (result.outcome === 'error') catalog.reportFailure(modelId, result.status)
     else catalog.reportSuccess(modelId)
   }
+  // The free tier only serves agent-shaped bodies (streaming plus the core
+  // agent tools); inject the shape through pi-ai's payload hook, which all
+  // three api implementations honour before sending. A caller-supplied
+  // onPayload still runs first, and its result is what gets shaped.
+  const injectFor = (protocol: ShapeProtocol) => (context: Context, options?: SimpleStreamOptions): SimpleStreamOptions => {
+    const caller = options?.onPayload
+    return {
+      ...inject(context, options),
+      onPayload: async (payload: unknown, model: Model<Api>) => {
+        const base = caller ? ((await caller(payload, model)) ?? payload) : payload
+        return agentShape(base, protocol) ?? base
+      },
+    }
+  }
   // Each protocol gets the same guarded layer; the dispatch key is model.api.
   return {
-    'openai-completions': wireLayer(openAICompletionsApi(), inject, report),
-    'openai-responses': wireLayer(openAIResponsesApi(), inject, report),
-    'anthropic-messages': wireLayer(anthropicMessagesApi(), inject, report),
+    'openai-completions': wireLayer(openAICompletionsApi(), injectFor('chat'), report),
+    'openai-responses': wireLayer(openAIResponsesApi(), injectFor('responses'), report),
+    'anthropic-messages': wireLayer(anthropicMessagesApi(), injectFor('anthropic'), report),
   }
 }

@@ -52,11 +52,39 @@ test('probeRequest builds the native endpoint per protocol', () => {
   const responses = probeRequest('x-free', 'responses')
   assert.equal(responses.url, 'https://opencode.ai/zen/v1/responses')
   assert.equal(responses.body.input, 'hi')
-  assert.equal(responses.body.stream, false)
+  assert.equal(responses.body.stream, true)
 
   const messages = probeRequest('x-free', 'anthropic')
   assert.equal(messages.url, 'https://opencode.ai/zen/v1/messages')
   assert.equal(messages.headers['x-api-key'], 'public')
   assert.equal(messages.headers.authorization, undefined, 'anthropic auth is x-api-key, not Bearer')
   assert.deepEqual(messages.body.messages, [{ role: 'user', content: 'hi' }])
+})
+
+// The free tier answers 403 FreeTierError unless the request carries streaming
+// plus the core agent tools, so every probe body must stay agent-shaped.
+test('probeRequest sends agent-shaped bodies the free tier accepts', () => {
+  assert.equal(probeRequest('x-free', 'chat').body.stream, true)
+  assert.equal(probeRequest('x-free', 'anthropic').body.stream, true)
+
+  const chat = probeRequest('x-free', 'chat').body.tools
+  assert.deepEqual(
+    chat.map((tool: { function: { name: string } }) => tool.function.name),
+    ['bash', 'read'],
+  )
+  assert.deepEqual(chat[0].type, 'function')
+
+  const responses = probeRequest('x-free', 'responses').body.tools
+  assert.deepEqual(
+    responses.map((tool: { name: string }) => tool.name),
+    ['bash', 'read'],
+  )
+  assert.deepEqual(responses[0].type, 'function')
+
+  const messages = probeRequest('x-free', 'anthropic').body.tools
+  assert.deepEqual(
+    messages.map((tool: { name: string }) => tool.name),
+    ['bash', 'read'],
+  )
+  assert.deepEqual(messages[0].input_schema, { type: 'object', properties: {} })
 })
