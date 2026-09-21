@@ -71,6 +71,17 @@ export default function (pi: ExtensionAPI): void {
   // Register pi for the onRefresh hook; the singleton is reused on re-run.
   piRef = pi
 
+  // Config-form twin FIRST: a native-only registration gets its
+  // "auth configured" status from a later async availability pass, and pi's
+  // startup refresh can be superseded by the fire-and-forget refresh that
+  // registerNativeProvider itself kicks off — findInitialModel then reads an
+  // empty snapshot and pi opens with "No models available" (measured ~1 in
+  // 10 cold starts). The config-form call marks opencode2pi configured
+  // synchronously when pi flushes the registration queue; the native
+  // registration below replaces the provider but keeps that provisional
+  // snapshot entry, so model resolution always finds auth.
+  pi.registerProvider(PROVIDER_ID, { apiKey: ANONYMOUS_KEY })
+
   // t=0: S3 static list (catalog.list() while pending). The picker is never
   // empty and startup never blocks on the network.
   pi.registerProvider(buildProvider(catalog))
