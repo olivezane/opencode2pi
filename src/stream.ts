@@ -1,11 +1,11 @@
 import type {
-  Api,
   AssistantMessageEventStream,
   Context,
-  Model,
   ProviderStreams,
   SimpleStreamOptions,
 } from '@earendil-works/pi-ai'
+
+import { logWarn } from './logger.ts'
 
 /**
  * Runtime feedback seam between the provider stream layer and the catalog:
@@ -16,6 +16,18 @@ import type {
  */
 
 export type StreamResult = { outcome: 'success' } | { outcome: 'error'; status: number | undefined }
+
+/**
+ * Observer bugs must never break the stream, but they must not be invisible
+ * either: report them to the extension log instead of propagating.
+ */
+function reportSafely(onResult: (result: StreamResult) => void, result: StreamResult): void {
+  try {
+    onResult(result)
+  } catch (err) {
+    logWarn(`stream observer failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
 
 interface GuardedEvent {
   type: string
@@ -48,30 +60,29 @@ export function wireLayer(
 ): ProviderStreams {
   const wrap = (inner: AssistantMessageEventStream, modelId: string): AssistantMessageEventStream => {
     const onResult = report(modelId)
+    // SAFETY: pi-ai's AssistantMessageEventStream yields AssistantMessageEvent,
+    // and this layer only reads the two GuardedEvent fields (type, error
+    // message) while passing every event through untouched; no runtime change.
     const generator = guardedStream(inner as unknown as AsyncIterable<GuardedEvent>, onResult)
     return new Proxy(inner, {
       get(target, prop, receiver) {
         if (prop === Symbol.asyncIterator) {
           return () => generator[Symbol.asyncIterator]()
         }
-        if (prop === 'next' || prop === 'return' || prop === 'throw') {
-          return (generator as any)[prop].bind(generator)
-        }
+        if (prop === 'next') return generator.next.bind(generator)
+        if (prop === 'return') return generator.return.bind(generator)
+        if (prop === 'throw') return generator.throw.bind(generator)
         if (prop === 'result') {
           return async () => {
             try {
-              const res = await (target as any).result()
-              try {
-                onResult({ outcome: 'success' })
-              } catch {}
+              const res = await target.result()
+              reportSafely(onResult, { outcome: 'success' })
               return res
             } catch (err) {
-              try {
-                onResult({
-                  outcome: 'error',
-                  status: statusFromErrorMessage(err instanceof Error ? err.message : String(err)),
-                })
-              } catch {}
+              reportSafely(onResult, {
+                outcome: 'error',
+                status: statusFromErrorMessage(err instanceof Error ? err.message : String(err)),
+              })
               throw err
             }
           }
@@ -102,11 +113,7 @@ export async function* guardedStream<T extends GuardedEvent>(
         event.type === 'error'
           ? { outcome: 'error', status: statusFromErrorMessage(event.error?.errorMessage) }
           : { outcome: 'success' }
-      try {
-        onResult(outcome)
-      } catch {
-        // an observer bug must never break streaming
-      }
+      reportSafely(onResult, outcome)
     }
     yield event
   }

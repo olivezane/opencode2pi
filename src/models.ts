@@ -64,6 +64,30 @@ const API_BY_PROTOCOL: Partial<Record<ZenProtocol, string>> = {
 }
 
 /**
+ * Protocol-specific pi-ai compat flags: the responses API needs the thinking
+ * level map and no session affinity, plain chat needs the store/role/token
+ * field overrides, and the anthropic path takes pi-ai's defaults.
+ */
+function apiCompat(protocol: ZenProtocol | undefined, api: Api) {
+  if (protocol === 'responses') {
+    return {
+      thinkingLevelMap: { off: null },
+      compat: { sessionAffinityFormat: 'openai-nosession' as const },
+    }
+  }
+  if (api === 'openai-completions') {
+    return {
+      compat: {
+        supportsStore: false,
+        supportsDeveloperRole: false,
+        maxTokensField: 'max_tokens' as const,
+      },
+    }
+  }
+  return {}
+}
+
+/**
  * Build the pi model list for the picker: ids already decided free by the
  * catalog. Limits and modalities prefer the capability catalog (the same
  * source that declares the protocol) and fall back to models.dev, then to the
@@ -103,20 +127,7 @@ export function toPiModels(
       // the Anthropic SDK appends /v1/messages itself; openai layers want /v1
       baseUrl: protocol === 'anthropic' ? ZEN_BASE_URL : ZEN_V1,
       reasoning,
-      ...(protocol === 'responses'
-        ? {
-            thinkingLevelMap: { off: null },
-            compat: { sessionAffinityFormat: 'openai-nosession' as const },
-          }
-        : api === 'openai-completions'
-          ? {
-              compat: {
-                supportsStore: false,
-                supportsDeveloperRole: false,
-                maxTokensField: 'max_tokens' as const,
-              },
-            }
-          : {}),
+      ...apiCompat(protocol, api),
       input: image ? ['text', 'image'] : ['text'],
       cost: {
         input: m?.costInput ?? 0,

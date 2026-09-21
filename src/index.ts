@@ -23,6 +23,7 @@ import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.ts'
 import { deriveRequestIDs, disguiseHeaders } from './ids.ts'
+import { logError, logInfo, logWarn } from './logger.ts'
 import { ANONYMOUS_KEY, PROVIDER_ID, PROVIDER_NAME, ZEN_V1, decodeModelsDevMeta, toPiModels } from './models.ts'
 import { wireLayer, type StreamResult } from './stream.ts'
 import { agentShape, type ShapeProtocol } from './shape.ts'
@@ -51,7 +52,7 @@ const catalog = new ModelCatalog({
   cachePath: defaultCachePath(join(homedir(), '.opencode2pi')),
   onRefresh: (status, lastError) => {
     writeStatus(status, lastError)
-    if (lastError) console.warn(`opencode2pi: catalog refresh issue: ${lastError}`)
+    if (lastError) logWarn(`catalog refresh issue: ${lastError}`)
     reRegister()
   },
   // Runtime feedback (cooldown on/off) must reach the picker without waiting
@@ -73,13 +74,13 @@ export default function (pi: ExtensionAPI): void {
   // t=0: S3 static list (catalog.list() while pending). The picker is never
   // empty and startup never blocks on the network.
   pi.registerProvider(buildProvider(catalog))
-  console.info(`opencode2pi: provider "${PROVIDER_ID}" registered (${catalog.list().length} static models; catalog warms up in background)`)
+  logInfo(`provider "${PROVIDER_ID}" registered (${catalog.list().length} static models; catalog warms up in background)`)
 
   pi.on('session_start', async () => {
     if (!catalogStarted) {
       catalogStarted = true
       void catalog.start().catch((err) => {
-        console.error(`opencode2pi: catalog start failed: ${err instanceof Error ? err.message : String(err)}`)
+        logError(`catalog start failed: ${err instanceof Error ? err.message : String(err)}`)
         catalogStarted = false
       })
     }

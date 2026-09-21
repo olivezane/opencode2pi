@@ -78,6 +78,44 @@ function isZenProvider(providerId: string, api: string): boolean {
   return value.includes('opencode') || value.includes('/zen/')
 }
 
+/** One entry of the capability catalog's per-provider `models` map. */
+interface CapabilityEntry {
+  id?: unknown
+  provider?: { npm?: unknown }
+  limit?: { context?: unknown; output?: unknown }
+  reasoning?: unknown
+  modalities?: { input?: unknown }
+}
+
+/** One provider section of the capability catalog. */
+interface CapabilityProvider {
+  id?: unknown
+  api?: unknown
+  npm?: unknown
+  models?: Record<string, CapabilityEntry>
+}
+
+/** One model's protocol plus limits, read from its capability-catalog entry. */
+function readCapability(
+  modelKey: string,
+  model: CapabilityEntry,
+  providerNpm: string,
+): { modelId: string; protocol: ZenProtocol | undefined; meta: CapabilityMeta } {
+  const modelId = typeof model.id === 'string' && model.id.length > 0 ? model.id : modelKey
+  const sdk = typeof model.provider?.npm === 'string' ? model.provider.npm : providerNpm
+  const inputs = Array.isArray(model.modalities?.input) ? model.modalities.input : []
+  return {
+    modelId,
+    protocol: protocolForSdk(sdk),
+    meta: {
+      contextWindow: positiveNumber(model.limit?.context),
+      maxTokens: positiveNumber(model.limit?.output),
+      reasoning: model.reasoning === true,
+      image: inputs.includes('image'),
+    },
+  }
+}
+
 /**
  * decodeZenCapabilities: port of fetchProtocolCapabilities (models.go:431)
  * trimmed to the single anonymous Zen lane. Visits each Zen model exactly
@@ -89,42 +127,17 @@ export function decodeZenCapabilities(data: unknown): ZenCapabilities {
   const unsupported = new Set<string>()
   const metadata = new Map<string, CapabilityMeta>()
   if (!data || typeof data !== 'object') return { protocols, unsupported, metadata }
-  const providers = data as Record<
-    string,
-    {
-      id?: unknown
-      api?: unknown
-      npm?: unknown
-      models?: Record<
-        string,
-        {
-          id?: unknown
-          provider?: { npm?: unknown }
-          limit?: { context?: unknown; output?: unknown }
-          reasoning?: unknown
-          modalities?: { input?: unknown }
-        }
-      >
-    }
-  >
+  const providers = data as Record<string, CapabilityProvider>
   for (const [providerId, provider] of Object.entries(providers)) {
     if (!provider || typeof provider !== 'object') continue
     if (!isZenProvider(String(providerId), String(provider.api ?? ''))) continue
-    const npm = typeof provider.npm === 'string' ? provider.npm : ''
+    const providerNpm = typeof provider.npm === 'string' ? provider.npm : ''
     for (const [modelKey, model] of Object.entries(provider.models ?? {})) {
       if (!model || typeof model !== 'object') continue
-      const modelId = typeof model.id === 'string' && model.id.length > 0 ? model.id : modelKey
-      const sdk = typeof model.provider?.npm === 'string' ? model.provider.npm : npm
-      const protocol = protocolForSdk(sdk)
+      const { modelId, protocol, meta } = readCapability(modelKey, model, providerNpm)
       if (protocol) protocols.set(modelId, protocol)
       else unsupported.add(modelId)
-      const inputs = Array.isArray(model.modalities?.input) ? model.modalities.input : []
-      metadata.set(modelId, {
-        contextWindow: positiveNumber(model.limit?.context),
-        maxTokens: positiveNumber(model.limit?.output),
-        reasoning: model.reasoning === true,
-        image: inputs.includes('image'),
-      })
+      metadata.set(modelId, meta)
     }
   }
   return { protocols, unsupported, metadata }
@@ -239,7 +252,14 @@ interface ModelPrice {
   deprecated: boolean
 }
 
-/** Decide ports model_metadata.go Decide (192-237) line for line. */
+/** Label for a model that at least one free signal accepts. */
+function freeSource(nameFree: boolean, metadataFree: boolean): string {
+  if (nameFree && metadataFree) return 'name_and_metadata_free'
+  if (nameFree) return 'name_free'
+  return 'metadata_free'
+}
+
+/** Decide ports model_metadata.go Decide (192-237), same order and labels. */
 export function decide(model: string, prices: Map<string, ModelPrice>, ready: boolean): AnonymousDecision {
   const nameFree = isFreeModel(model)
   const fallback = (source: string): AnonymousDecision => {
@@ -250,10 +270,7 @@ export function decide(model: string, prices: Map<string, ModelPrice>, ready: bo
   const price = prices.get(model)
   if (!price) return fallback('metadata_model_missing')
   const metadataFree = !price.deprecated && price.input === 0 && price.output === 0
-  if (nameFree || metadataFree) {
-    const source = nameFree && metadataFree ? 'name_and_metadata_free' : nameFree ? 'name_free' : 'metadata_free'
-    return { allowed: true, source, known: true }
-  }
+  if (nameFree || metadataFree) return { allowed: true, source: freeSource(nameFree, metadataFree), known: true }
   if (price.deprecated) return { allowed: false, source: 'metadata_deprecated', known: true }
   if (price.input === undefined || price.output === undefined) {
     return { allowed: false, source: 'metadata_cost_unknown', known: false }
@@ -267,39 +284,60 @@ export function decide(model: string, prices: Map<string, ModelPrice>, ready: bo
  * key, then any key containing "opencode" whose identity matches; visit each
  * model exactly once and stop after the first section that yielded one.
  */
+/** One provider section of the models.dev payload. */
+interface ModelsDevProvider {
+  id?: unknown
+  name?: unknown
+  models?: Record<string, Record<string, unknown>>
+}
+
+/** models.dev provider key ranking: exact Zen keys first, then other opencode keys. */
+function providerRank(key: string): number {
+  const lower = key.toLowerCase()
+  if (lower === 'opencode' || lower === 'opencode-zen' || lower === 'opencode_zen') return 0
+  if (lower.includes('opencode')) return 1
+  return 2
+}
+
+/** Provider keys in rank order, ties by locale so the winner is deterministic. */
+function rankedProviderKeys(providers: Record<string, ModelsDevProvider>): string[] {
+  return Object.keys(providers).sort((left, right) => {
+    const delta = providerRank(left) - providerRank(right)
+    return delta !== 0 ? delta : left.localeCompare(right)
+  })
+}
+
+/** A rank-1 key only counts when the provider's own identity mentions opencode. */
+function isOpencodeIdentity(provider: ModelsDevProvider): boolean {
+  return `${provider.id ?? ''} ${provider.name ?? ''}`.toLowerCase().includes('opencode')
+}
+
+/** Visit every readable model entry; returns how many were visited. */
+function visitModels(
+  models: Record<string, Record<string, unknown>>,
+  visit: (modelId: string, raw: Record<string, unknown>) => void,
+): number {
+  let visited = 0
+  for (const [modelKey, raw] of Object.entries(models)) {
+    if (!raw || typeof raw !== 'object') continue
+    visit(typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : modelKey, raw)
+    visited += 1
+  }
+  return visited
+}
+
 export function forModelsDev(data: unknown, visit: (modelId: string, raw: Record<string, unknown>) => void): void {
   if (!data || typeof data !== 'object') return
-  const providers = data as Record<string, { models?: Record<string, Record<string, unknown>>; id?: unknown; name?: unknown }>
-  const rank = (key: string): number => {
-    const lower = key.toLowerCase()
-    if (lower === 'opencode' || lower === 'opencode-zen' || lower === 'opencode_zen') return 0
-    if (lower.includes('opencode')) return 1
-    return 2
-  }
-  const keys = Object.keys(providers).sort((left, right) => {
-    const leftRank = rank(left)
-    const rightRank = rank(right)
-    if (leftRank !== rightRank) return leftRank - rightRank
-    return left.localeCompare(right)
-  })
-  for (const key of keys) {
-    if (rank(key) > 1) continue
+  const providers = data as Record<string, ModelsDevProvider>
+  for (const key of rankedProviderKeys(providers)) {
+    const rank = providerRank(key)
+    if (rank > 1) continue
     const provider = providers[key]
     if (!provider || typeof provider !== 'object') continue
-    if (rank(key) === 1) {
-      const identity = `${provider.id ?? ''} ${provider.name ?? ''}`.toLowerCase().trim()
-      if (!identity.includes('opencode')) continue
-    }
+    if (rank === 1 && !isOpencodeIdentity(provider)) continue
     const models = provider.models
     if (!models || typeof models !== 'object') continue
-    let visited = 0
-    for (const [modelKey, raw] of Object.entries(models)) {
-      if (!raw || typeof raw !== 'object') continue
-      const modelId = typeof raw.id === 'string' && raw.id.length > 0 ? raw.id : modelKey
-      visit(modelId, raw)
-      visited += 1
-    }
-    if (visited > 0) return
+    if (visitModels(models, visit) > 0) return
   }
 }
 
@@ -398,7 +436,7 @@ export class ModelCatalog {
   #staticIds: string[]
   #bannedIds: string[]
   /** Raw models.dev provider payload, for full model metadata (src/models.ts). */
-  #rawMetadata: unknown = null
+  #rawMetadata: Record<string, unknown> | null = null
   /** Native protocols from the OpenCode capability catalog; empty until it lands. */
   #capabilities: ZenCapabilities = { protocols: new Map(), unsupported: new Set(), metadata: new Map() }
   #capsFetchedAt = 0
@@ -471,7 +509,7 @@ export class ModelCatalog {
     if (this.#capsFetchedAt !== 0 && this.#now() - this.#capsFetchedAt < DAILY_REFRESH_MS) return
     try {
       const capabilities = await fetchZenCapabilities(this.#capabilitiesUrl, this.#fetch, opencodeUserAgent())
-      const documented = await fetchZenProtocolDocs(this.#docsUrl, this.#fetch, opencodeUserAgent()).catch(() => null)
+      const documented = await settledOrNull(fetchZenProtocolDocs(this.#docsUrl, this.#fetch, opencodeUserAgent()))
       this.#capabilities = documented ? mergeProtocolDocs(capabilities, documented) : capabilities
       this.#capsFetchedAt = this.#now()
     } catch {
@@ -494,7 +532,11 @@ export class ModelCatalog {
     try {
       const response = await withTimeout(this.#fetch(this.#metadataUrl, { headers: { accept: 'application/json' } }))
       if (!response.ok) throw new Error(`models.dev returned HTTP ${response.status}`)
-      const data = (await response.json()) as unknown
+      const parsed: unknown = await response.json()
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error('models.dev returned a non-object payload')
+      }
+      const data = parsed as Record<string, unknown>
       const prices = decodeModelsDev(data)
       if (prices.size === 0) throw new Error('models.dev contains no OpenCode model metadata')
       this.#prices = prices
@@ -504,7 +546,7 @@ export class ModelCatalog {
     } catch (err) {
       // Network failure with a cached copy is not fatal: load the cache.
       if (this.#cachePath && !this.#pricesReady) {
-        const cached = await loadMetadataCache(this.#cachePath).catch(() => null)
+        const cached = await settledOrNull(loadMetadataCache(this.#cachePath))
         if (cached && cached.size > 0) {
           this.#prices = cached
           this.#pricesReady = true
@@ -548,7 +590,9 @@ export class ModelCatalog {
   /** ids exposed to the picker: free ∧ chat-native, or the static verified set while the live catalog is pending. */
   list(): string[] {
     const ids = this.#zen.size === 0 ? this.#staticIds : [...this.#zen]
-    return ids.filter((model) => this.decision(model).allowed && this.capable(model)).sort()
+    return ids
+      .filter((model) => this.decision(model).allowed && this.capable(model))
+      .sort((a, b) => Number(a > b) - Number(a < b))
   }
 
   /**
@@ -583,8 +627,11 @@ export class ModelCatalog {
   snapshot(): CatalogSnapshot {
     const age = this.#updatedAt === 0 ? Infinity : this.#now() - this.#updatedAt
     const stale = this.#updatedAt !== 0 && age > 10 * 60 * 1000
+    let status: CatalogSnapshot['status'] = 'ready'
+    if (this.#updatedAt === 0) status = 'pending'
+    else if (stale) status = 'stale'
     return {
-      status: this.#updatedAt === 0 ? 'pending' : stale ? 'stale' : 'ready',
+      status,
       total: this.#zen.size,
       exposed: this.list().length,
       ...(this.#updatedAt !== 0 ? { lastRefresh: new Date(this.#updatedAt).toISOString() } : {}),
@@ -596,8 +643,17 @@ export class ModelCatalog {
   }
 
   /** The raw models.dev JSON from the last successful fetch (null while pending/restored-from-cache). */
-  get rawMetadata(): unknown {
+  get rawMetadata(): Record<string, unknown> | null {
     return this.#rawMetadata
+  }
+}
+
+/** Await a best-effort fetch: a rejection becomes null instead of a throw. */
+async function settledOrNull<T>(promise: Promise<T>): Promise<T | null> {
+  try {
+    return await promise
+  } catch {
+    return null
   }
 }
 
@@ -652,7 +708,14 @@ async function saveMetadataCache(path: string, prices: Map<string, ModelPrice>, 
 }
 
 async function loadMetadataCache(path: string): Promise<Map<string, ModelPrice>> {
-  const raw = JSON.parse(await readFile(path, 'utf8')) as MetadataCache
+  const text = await readFile(path, 'utf8')
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    throw new Error('models.dev cache is not valid JSON')
+  }
+  const raw = parsed as MetadataCache
   if (Date.now() - raw.updatedAt > 7 * DAILY_REFRESH_MS) {
     throw new Error('models.dev cache too old')
   }
