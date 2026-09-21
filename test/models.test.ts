@@ -121,6 +121,8 @@ test('toPiModels incorporates builtin models matching /login behavior', () => {
   assert.deepEqual(pickle.compat, {
     supportsStore: false,
     supportsDeveloperRole: false,
+    // pi-ai 0.87 advertises strict tool schemas for the builtin opencode table.
+    supportsStrictMode: true,
     maxTokensField: 'max_tokens',
   })
 
