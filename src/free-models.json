@@ -5,10 +5,6 @@
       "verified": "2026-09-03"
     },
     {
-      "id": "ling-3.0-flash-fin-free",
-      "verified": "2026-09-03"
-    },
-    {
       "id": "longcat-2.5-preview-free",
       "verified": "2026-09-26"
     },
@@ -63,5 +59,11 @@
       "lastCode": 401
     }
   ],
-  "pending": []
+  "pending": [
+    {
+      "id": "ling-3.0-flash-fin-free",
+      "firstFailed": "2026-09-28",
+      "lastCode": 400
+    }
+  ]
 }
