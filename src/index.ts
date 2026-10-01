@@ -80,6 +80,9 @@ export default function (pi: ExtensionAPI): void {
   // synchronously when pi flushes the registration queue; the native
   // registration below replaces the provider but keeps that provisional
   // snapshot entry, so model resolution always finds auth.
+  // pi 0.99's markProvisionallyConfigured (the fix for #9962) only covers
+  // providers with a stored credential; this anonymous provider has none, so
+  // the native registration alone still loses the startup race. Keep this.
   pi.registerProvider(PROVIDER_ID, { apiKey: ANONYMOUS_KEY })
 
   // t=0: S3 static list (catalog.list() while pending). The picker is never
