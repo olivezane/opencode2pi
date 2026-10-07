@@ -73,6 +73,7 @@ pi -e git:@github.com/olivezane/opencode2pi
 | --- | --- |
 | `models-dev-cache.json` | models.dev 元数据缓存（约 7 天 TTL），供 fallback 链使用 |
 | `adapter-status.json` | 每轮刷新后写入的健康快照 |
+| `opencode2pi.log` | 扩展日志（刷新失败、stream observer 报错）；超过 2 MB 自动清空 |
 
 ## 工作原理
 
@@ -108,7 +109,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 
 ## 健康与排障
 
-`~/.opencode2pi/adapter-status.json` 每轮刷新后重写：
+`~/.opencode2pi/adapter-status.json` 每轮刷新后重写。诊断信息写入 `~/.opencode2pi/opencode2pi.log`，非交互模式（print、JSON、RPC）下同时回显到 stderr；交互式 TUI 下不写 stderr——写 stderr 会落在渲染帧中间，把画面弄花：
 
 ```json
 {
@@ -124,7 +125,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 | --- | --- |
 | 只有 3 个模型 | 启动拉取撞上网络未就绪；重试约 1 分钟内落地。看 `adapter-status.json` 的 `lastError`。 |
 | 列表看起来很短 | 匿名通道只服务免费子集（付费模型一律 401）——这就是全部目录，不是 bug。匿名通道带不动的 id 经探针台账（`src/catalog.ts` 的 `staticUnavailable`）禁用。 |
-| `lastError: "fetch failed"` 持续 | 到 `opencode.ai` 的出站 HTTPS 被阻断；检查代理/VPN 规则。 |
+| `lastError: "fetch failed"` 持续 | 到 `opencode.ai` 的出站 HTTPS 被阻断；检查代理/VPN 规则。完整序列见 `opencode2pi.log`。 |
 | 聊天中报限流错误 | 匿名通道按 IP 限额；换网络节点或稍等。 |
 | `403 FreeTierError`（“free tier can only be used from within OpenCode”） | 请求不像 CLI 流量：session 不是规范形状，或被其它层覆盖了 `x-opencode-session`。先更新本包；仍复现则是有别的扩展在改写 provider 请求头。 |
 

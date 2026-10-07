@@ -78,6 +78,7 @@ State lives in `~/.opencode2pi/`:
 | File | Purpose |
 | --- | --- |
 | `models-dev-cache.json` | models.dev metadata cache (~7-day TTL) for the fallback chain |
+| `opencode2pi.log` | Extension log (refresh failures, stream observer errors); truncated at 2 MB |
 | `adapter-status.json` | Health snapshot written after every refresh round |
 
 ## How it works
@@ -119,7 +120,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 
 ## Health & troubleshooting
 
-`~/.opencode2pi/adapter-status.json` is rewritten after every refresh round:
+`~/.opencode2pi/adapter-status.json` is rewritten after every refresh round. Diagnostics land in `~/.opencode2pi/opencode2pi.log`, and on stderr as well in the non-interactive modes (print, JSON, RPC). The interactive TUI never sees them — a stray stderr write lands mid-frame and scribbles over the screen:
 
 ```json
 {
@@ -135,7 +136,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 | --- | --- |
 | Only 3 models | Startup fetch raced your network; retries land within ~1 min. Check `adapter-status.json` for `lastError`. |
 | The list looks short | The anonymous lane only serves the free subset (paid models answer 401) — that is the whole catalog, not a bug. Ids the lane fails on are banned via the probe ledger (`staticUnavailable` in `src/catalog.ts`). |
-| `lastError: "fetch failed"` persisting | Outbound HTTPS to `opencode.ai` blocked; check proxy/VPN rules. |
+| `lastError: "fetch failed"` persisting | Outbound HTTPS to `opencode.ai` blocked; check proxy/VPN rules. See `opencode2pi.log` for the full sequence. |
 | Rate-limit errors in chat | The anonymous lane is quota-per-IP; switch network node or wait. |
 | `403 FreeTierError` ("free tier can only be used from within OpenCode") | The request did not look like CLI traffic: the session was not in the canonical shape, or another layer overwrote `x-opencode-session`. Update the package; if it persists, an unrelated extension is stamping provider headers. |
 
