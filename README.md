@@ -41,6 +41,7 @@ nothing to host.
 - **Live catalog with a fallback chain** — live upstream list ∩ free-by-metadata, falling back to offline cache and a verified static list
 - **Real model metadata** — context windows, token limits, modalities and (zero) pricing come from models.dev, so pi's compaction and cost tracking are honest
 - **Proper error surfaces** — upstream failures arrive as classified pi stream errors
+- **Classification included** — Zen's free classifier (`jev-1.13-free`) is registered as a pi classifier model, so `models.classify()` works on the anonymous lane too
 
 ## Install
 
@@ -111,6 +112,10 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
   capability catalog (the source that also declares the protocol), falling
   back to the models.dev payload used for the free decision, then to
   conservative defaults. Pricing always comes from models.dev (zero here).
+- **Classification** — Zen's classifier lane speaks TypeSafe's System One
+  protocol at `/zen/v1/systemone`; the free classifier is registered as a pi
+  classifier model (not a chat model, so the picker never shows it) and is
+  reachable through pi's `models.classify()`.
 
 ## Health & troubleshooting
 

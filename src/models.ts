@@ -1,5 +1,5 @@
-import type { Api, Model } from '@earendil-works/pi-ai'
-import { getBuiltinModel } from '@earendil-works/pi-ai/providers/all'
+import type { Api, ClassifierApi, ClassifierModel, Model } from '@earendil-works/pi-ai'
+import { getBuiltinClassifierModel, getBuiltinModel } from '@earendil-works/pi-ai/providers/all'
 
 import type { CapabilityMeta, ZenProtocol } from './catalog.ts'
 import { ZEN_BASE_URL, forModelsDev } from './catalog.ts'
@@ -19,6 +19,9 @@ const num = (value: unknown, min: number): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) && value >= min ? value : undefined
 
 export const ZEN_V1 = `${ZEN_BASE_URL.replace(/\/+$/, '')}/v1`
+
+/** The classifier wire API Zen serves: TypeSafe System One (`/zen/v1/systemone`). */
+export const CLASSIFIER_API = 'typesafe-system-one'
 
 /**
  * Full per-model metadata as found in the OpenCode section of models.dev
@@ -87,6 +90,29 @@ function apiCompat(protocol: ZenProtocol | undefined, api: Api) {
   return {}
 }
 
+/** The builtin opencode classifier entry for an id, if the id names one. */
+function builtinClassifier(id: string): ClassifierModel<ClassifierApi> | undefined {
+  const get = getBuiltinClassifierModel as (
+    provider: string,
+    modelId: string,
+  ) => ClassifierModel<ClassifierApi> | undefined
+  return get('opencode', id)
+}
+
+/**
+ * Build the classifier models: the builtin Zen classifier entries (they carry
+ * the System One api, the `/zen/v1` base URL and their own context window),
+ * re-homed to this provider. Only ids the builtin catalog declares as
+ * classifiers are accepted — any other id would need a wire layer this
+ * package does not own.
+ */
+export function toPiClassifiers(ids: string[]): Array<ClassifierModel<ClassifierApi>> {
+  return ids.flatMap((id) => {
+    const builtin = builtinClassifier(id)
+    return builtin ? [{ ...builtin, provider: PROVIDER_ID }] : []
+  })
+}
+
 /**
  * Build the pi model list for the picker: ids already decided free by the
  * catalog. Limits and modalities prefer the capability catalog (the same
@@ -99,7 +125,9 @@ export function toPiModels(
   protocols: Map<string, ZenProtocol> = new Map(),
   capabilityMeta: Map<string, CapabilityMeta> = new Map(),
 ): Array<Model<Api>> {
-  return ids.map((id) => {
+  // Classifier ids are not chat models: they only speak System One, so they
+  // belong to toPiClassifiers and must never reach the chat list.
+  return ids.filter((id) => builtinClassifier(id) === undefined).map((id) => {
     const builtin = (getBuiltinModel as (provider: string, modelId: string) => Model<Api> | undefined)('opencode', id)
     const m = meta.get(id)
     const caps = capabilityMeta.get(id)

@@ -65,8 +65,24 @@ _Avoid_: session seed
 
 **Catalog**:
 The set of models this package exposes in pi's model picker. Decided by the
-fallback chain below; lives in `ModelCatalog`.
+fallback chain below; lives in `ModelCatalog`. Classifier models ride along in
+the same id list (see **Classifier lane**), but they are not chat models, so
+they never reach the picker.
 _Avoid_: model list (except for the raw `/v1/models` response)
+
+**Classifier lane**:
+Zen's second lane: classification models (`jev-1.13`, `jev-1.13-free`) served
+over TypeSafe's System One protocol at `/zen/v1/systemone` — not chat
+completions. They are also a second pi *model type* (`type: "classifier"`), so
+they are registered as classifiers and never as chat models, reachable only
+through pi's classifier API (`models.classify`, codemode) — the picker never
+shows them. The wire implementation is pi's builtin `opencode` classifier,
+borrowed through `providers/all` rather than reimplemented: pi's extension
+loader does not alias `api/*` subpaths, so the System One factory is not
+importable from a published package. Requests need no disguise headers (the
+lane answers a bare `Bearer public` request), and the runtime cooldown hides
+the classifier on a hard 400/401 like any other model.
+_Avoid_: jev support, classifier model type
 
 **Capability catalog**:
 `https://models.opencode.ai/api.json` — OpenCode's machine-readable provider
@@ -112,7 +128,7 @@ Catalog resolution order: S1 live `GET /v1/models` → S2 offline disk cache (~7
 _Avoid_: tier system
 
 **Probe ledger** (`src/free-models.json`):
-The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion. Each candidate is probed on its native protocol (chat/responses/anthropic), so a model is only "verified" if its own interface actually answers; candidates with unknown SDKs are skipped (no known endpoint), and if the capability catalog is unreachable the probe degrades to probing every candidate rather than rewriting from an incomplete picture.
+The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion. Each candidate is probed on its native protocol (chat/responses/anthropic), so a model is only "verified" if its own interface actually answers; candidates with unknown SDKs are skipped (no known endpoint), and if the capability catalog is unreachable the probe degrades to probing every candidate rather than rewriting from an incomplete picture. Classifier ids are not chat-probable — the lane answers their chat probe with a 5xx, which is indeterminate — so the ledger neither verifies nor bans them (see **Classifier lane**).
 _Avoid_: ban list, blacklist
 
 **Verified / banned**:

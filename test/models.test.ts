@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import type { CapabilityMeta } from '../src/catalog.ts'
-import { PROVIDER_ID, ZEN_V1, decodeModelsDevMeta, toPiModels } from '../src/models.ts'
+import { PROVIDER_ID, ZEN_V1, CLASSIFIER_API, decodeModelsDevMeta, toPiClassifiers, toPiModels } from '../src/models.ts'
 
 // Real models.dev api.json shape (opencode section), trimmed.
 const payload = {
@@ -145,4 +145,25 @@ test('toPiModels incorporates builtin models matching /login behavior', () => {
   const mimo = models.find((m) => m.id === 'mimo-v2.6-flash-free')!
   assert.equal(mimo.provider, PROVIDER_ID)
   assert.equal(mimo.name, 'MiMo-V2.6-Flash Free')
+})
+
+test('toPiClassifiers serves the builtin Zen classifier on this provider', () => {
+  const classifiers = toPiClassifiers(['jev-1.13-free', 'big-pickle', 'mystery-free'])
+  assert.equal(classifiers.length, 1, 'only ids the builtin catalog declares as classifiers survive')
+
+  const jev = classifiers[0]!
+  assert.equal(jev.id, 'jev-1.13-free')
+  assert.equal(jev.type, 'classifier')
+  assert.equal(jev.api, CLASSIFIER_API)
+  assert.equal(jev.api, 'typesafe-system-one')
+  assert.equal(jev.provider, PROVIDER_ID)
+  assert.equal(jev.baseUrl, ZEN_V1)
+  assert.equal(jev.contextWindow, 32000)
+  assert.deepEqual(jev.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+
+  // Classifier ids are not chat models: they must never reach the chat list.
+  assert.deepEqual(
+    toPiModels(['jev-1.13-free', 'c-free'], new Map()).map((model) => model.id),
+    ['c-free'],
+  )
 })

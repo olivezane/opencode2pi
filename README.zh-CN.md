@@ -38,6 +38,7 @@ provider，直连 [OpenCode Zen](https://opencode.ai/zen) 的**匿名免费通�
 - **实时目录 + fallback 链**——上游实时列表 ∩ 元数据免费判定，退化为离线缓存与已验证静态清单
 - **真实模型元数据**——上下文窗口、输出上限、模态与（为零的）价格来自 models.dev，pi 的 compaction 与费用统计因而是准的
 - **规范的错误面**——上游故障以分类后的 pi 流错误呈现
+- **分类器也支持**——Zen 的免费分类器（`jev-1.13-free`）注册为 pi 分类器模型，`models.classify()` 在匿名通道同样可用
 
 ## 安装
 
@@ -101,6 +102,9 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 - **模型元数据**——上下文窗口、输出上限、reasoning、图片输入取自 OpenCode 的
   capability catalog（与协议同源），其次回退到用于免费判定的 models.dev
   payload，最后是保守默认值。价格始终来自 models.dev（此处为 0）。
+- **分类器**——Zen 的分类通道走 TypeSafe 的 System One 协议
+  （`/zen/v1/systemone`）；免费分类器注册为 pi 的分类器模型（不是 chat 模型，
+  选择器里不会出现），通过 pi 的 `models.classify()` 调用。
 
 ## 健康与排障
 

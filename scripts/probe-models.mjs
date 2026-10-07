@@ -77,6 +77,11 @@ async function main() {
   const verdicts = new Map()
   let gateFailures = 0
   for (const id of candidates) {
+    // ponytail: a classifier id (Zen's System One lane, e.g. jev-1.13-free) has
+    // no capability-catalog protocol and is probed as chat, where the lane
+    // answers a 5xx — indeterminate, so the ledger never bans it. Upgrade path:
+    // probe /zen/v1/systemone once the classifier ids are known without pulling
+    // pi-ai in (this script runs in CI with no node_modules).
     const protocol = caps?.protocols.get(id) ?? 'chat'
     const { status, gate } = await probe(id, protocol)
     if (gate) gateFailures++

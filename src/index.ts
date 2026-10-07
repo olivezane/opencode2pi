@@ -8,6 +8,7 @@ import {
   type Context,
   type Model,
   type Provider,
+  type ProviderClassifier,
   type ProviderStreams,
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai'
@@ -19,12 +20,25 @@ import {
   openAICompletionsApi,
   openAIResponsesApi,
 } from '@earendil-works/pi-ai/compat'
+// The builtin opencode provider owns the System One classifier implementation;
+// /providers/all is one of the few aliased entrypoints (see above), so this is
+// the only way to reach it from a published package.
+import { builtinProviders } from '@earendil-works/pi-ai/providers/all'
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent'
 
 import { ModelCatalog, defaultCachePath, type CatalogSnapshot } from './catalog.ts'
 import { deriveRequestIDs, disguiseHeaders } from './ids.ts'
 import { logError, logInfo, logWarn } from './logger.ts'
-import { ANONYMOUS_KEY, PROVIDER_ID, PROVIDER_NAME, ZEN_V1, decodeModelsDevMeta, toPiModels } from './models.ts'
+import {
+  ANONYMOUS_KEY,
+  CLASSIFIER_API,
+  PROVIDER_ID,
+  PROVIDER_NAME,
+  ZEN_V1,
+  decodeModelsDevMeta,
+  toPiClassifiers,
+  toPiModels,
+} from './models.ts'
 import { wireLayer, type StreamResult } from './stream.ts'
 import { agentShape, type ShapeProtocol } from './shape.ts'
 
@@ -124,9 +138,35 @@ function buildProvider(cat: ModelCatalog): Provider<Api> {
         resolve: async () => ({ auth: { apiKey: ANONYMOUS_KEY }, source: 'anonymous lane' }),
       },
     },
-    models: toPiModels(cat.list(), decodeModelsDevMeta(cat.rawMetadata), cat.protocols, cat.capabilityMetadata),
+    models: [
+      ...toPiModels(cat.list(), decodeModelsDevMeta(cat.rawMetadata), cat.protocols, cat.capabilityMetadata),
+      ...toPiClassifiers(cat.list()),
+    ],
     api: zenApi(),
+    // The classifier lane. Zen serves TypeSafe's System One protocol, and the
+    // builtin opencode provider already owns that wire implementation; pi's
+    // extension loader does not alias `api/typesafe-system-one.lazy`, so we
+    // borrow the builtin instead of reimplementing the protocol.
+    classifiers: {
+      [CLASSIFIER_API]: {
+        classify: (model, context, options) => systemOneClassifier().classify(model, context, options),
+      },
+    },
   })
+}
+
+// Resolved on the first classification, not at registration: builtinProviders()
+// constructs all 42 builtin providers, which the extension factory should not
+// pay for (and pi runs the factory in invocations that never classify).
+let systemOne: ProviderClassifier | undefined
+
+function systemOneClassifier(): ProviderClassifier {
+  if (!systemOne) {
+    const classify = builtinProviders().find((provider) => provider.id === 'opencode')?.classify
+    if (!classify) throw new Error('pi-ai no longer ships the builtin OpenCode classifier implementation')
+    systemOne = { classify }
+  }
+  return systemOne
 }
 
 /**
