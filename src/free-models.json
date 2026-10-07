@@ -21,10 +21,6 @@
       "verified": "2026-09-26"
     },
     {
-      "id": "mimo-v2.5-free",
-      "verified": "2026-09-03"
-    },
-    {
       "id": "mimo-v2.6-flash-free",
       "verified": "2026-09-21"
     },
@@ -53,7 +49,7 @@
     {
       "id": "deepseek-v4-flash-free",
       "firstFailed": "2026-08-28",
-      "lastCode": 400
+      "lastCode": 401
     },
     {
       "id": "hy3-free",
@@ -76,5 +72,11 @@
       "lastCode": 401
     }
   ],
-  "pending": []
+  "pending": [
+    {
+      "id": "mimo-v2.5-free",
+      "firstFailed": "2026-10-07",
+      "lastCode": 401
+    }
+  ]
 }
