@@ -67,16 +67,15 @@
       "lastCode": 400
     },
     {
+      "id": "mimo-v2.5-free",
+      "firstFailed": "2026-10-07",
+      "lastCode": 401
+    },
+    {
       "id": "union-alpha",
       "firstFailed": "2026-09-18",
       "lastCode": 401
     }
   ],
-  "pending": [
-    {
-      "id": "mimo-v2.5-free",
-      "firstFailed": "2026-10-07",
-      "lastCode": 401
-    }
-  ]
+  "pending": []
 }
