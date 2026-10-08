@@ -9,10 +9,6 @@
       "verified": "2026-10-07"
     },
     {
-      "id": "fledge-alpha-free",
-      "verified": "2026-10-02"
-    },
-    {
       "id": "ling-3.1-flash-free",
       "verified": "2026-10-03"
     },
@@ -43,6 +39,10 @@
     {
       "id": "space-bunny-free",
       "verified": "2026-09-23"
+    },
+    {
+      "id": "step-5-preview-free",
+      "verified": "2026-10-08"
     }
   ],
   "unavailable": [
@@ -77,5 +77,16 @@
       "lastCode": 401
     }
   ],
-  "pending": []
+  "pending": [
+    {
+      "id": "fledge-alpha-free",
+      "firstFailed": "2026-10-08",
+      "lastCode": 401
+    },
+    {
+      "id": "jev-1.13-free",
+      "firstFailed": "2026-10-08",
+      "lastCode": 400
+    }
+  ]
 }
