@@ -52,9 +52,19 @@
       "lastCode": 401
     },
     {
+      "id": "fledge-alpha-free",
+      "firstFailed": "2026-10-08",
+      "lastCode": 401
+    },
+    {
       "id": "hy3-free",
       "firstFailed": "2026-08-31",
       "lastCode": 401
+    },
+    {
+      "id": "jev-1.13-free",
+      "firstFailed": "2026-10-08",
+      "lastCode": 400
     },
     {
       "id": "laguna-s-2.1-free",
@@ -77,16 +87,5 @@
       "lastCode": 401
     }
   ],
-  "pending": [
-    {
-      "id": "fledge-alpha-free",
-      "firstFailed": "2026-10-08",
-      "lastCode": 401
-    },
-    {
-      "id": "jev-1.13-free",
-      "firstFailed": "2026-10-08",
-      "lastCode": 400
-    }
-  ]
+  "pending": []
 }
