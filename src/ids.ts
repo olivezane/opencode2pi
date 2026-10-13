@@ -27,18 +27,28 @@ const BASE62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrs
 /**
  * Canonicalize a session signal: an already-official OpenCode session passes
  * through untouched (preserving upstream prompt-cache affinity), anything else
- * is deterministically hashed into the canonical shape so one conversation
- * keeps one stable session.
+ * is minted exactly like the real client (opencode packages/schema/src/
+ * identifier.ts): a 48-bit descending timestamp (Date.now()<<12 | counter,
+ * bitwise-NOT) as 12 hex chars, plus 14 CSPRNG bytes mapped to base62.
+ *
+ * Why not a deterministic hash anymore: since ~2026-10 the Zen free tier
+ * decodes the 12 hex chars and checks their low 12 bits as a per-millisecond
+ * counter, accepting only counter in [0, 63]; hash-derived prefixes land in
+ * that window with probability ~1.5% and are rejected with 403 FreeTierError
+ * (shape-valid but not genuine). A real client id (counter=1) always ends its
+ * hex prefix with "ffe" (~1 & 0xFFF = 0xFFE), a structural byproduct of the
+ * bitwise NOT. Mechanism verified by live probes:
+ * https://github.com/FishBottle7/opencode2dsh/pull/68
  */
 export function canonicalSessionID(signal: string): string {
   if (CANONICAL_SESSION_PATTERN.test(signal)) return signal
-  const sum = createHash('sha256').update(`ses\x00${signal}`).digest()
-  const timePart = sum.subarray(0, 6).toString('hex')
-  let remainder = BigInt(`0x${sum.subarray(6, 16).toString('hex')}`)
+  const current = BigInt(Date.now()) * 0x1000n + 1n
+  const value = ~current & 0xffffffffffffn
+  const timePart = value.toString(16).padStart(12, '0')
+  const bytes = randomBytes(14)
   let randomPart = ''
   for (let index = 0; index < 14; index += 1) {
-    randomPart = BASE62_ALPHABET.charAt(Number(remainder % 62n)) + randomPart
-    remainder /= 62n
+    randomPart += BASE62_ALPHABET[bytes[index] % 62]
   }
   return `ses_${timePart}${randomPart}`
 }
