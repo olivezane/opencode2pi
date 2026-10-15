@@ -73,6 +73,11 @@
       "lastCode": 400
     },
     {
+      "id": "ling-3.1-flash-free",
+      "firstFailed": "2026-10-14",
+      "lastCode": 400
+    },
+    {
       "id": "mimo-v2.5-free",
       "firstFailed": "2026-10-07",
       "lastCode": 401
@@ -83,11 +88,5 @@
       "lastCode": 400
     }
   ],
-  "pending": [
-    {
-      "id": "ling-3.1-flash-free",
-      "firstFailed": "2026-10-14",
-      "lastCode": 400
-    }
-  ]
+  "pending": []
 }
