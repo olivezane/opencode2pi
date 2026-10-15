@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { decodeZenCapabilities } from '../src/catalog.ts'
+import { disguiseHeaders } from '../src/ids.ts'
 // @ts-expect-error scripts are plain ESM with no .d.ts
 import { probeRequest, selectCandidates } from '../scripts/probe-models.mjs'
 
@@ -80,4 +81,18 @@ test('probeRequest sends agent-shaped bodies the free tier accepts', () => {
   const messages = probeRequest('x-free', 'anthropic').body.tools
   assert.deepEqual(messages.map((t: { name: string }) => t.name), ['read'])
   assert.deepEqual(messages[0].input_schema.required, ['path'])
+})
+
+// A probe that sends a different header set than the runtime cannot verify the
+// lane: on 2026-10-15 it lacked the twin `x-opencode-session-id` and reported
+// 403 for every model while real requests kept working.
+test('the probe sends exactly the runtime header set', () => {
+  const chat = probeRequest('x-free', 'chat')
+  const runtime = disguiseHeaders({
+    session: chat.headers['x-opencode-session'] as string,
+    project: chat.headers['x-opencode-project'] as string,
+  })
+  for (const [name, value] of Object.entries(runtime)) {
+    assert.equal(chat.headers[name], value, `probe must send ${name}=${value}`)
+  }
 })

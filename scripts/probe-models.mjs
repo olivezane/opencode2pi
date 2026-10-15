@@ -27,7 +27,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { CAPABILITIES_URL, fetchZenCapabilities, isRouteable } from '../src/catalog.ts'
-import { canonicalSessionID, opencodeUserAgent } from '../src/ids.ts'
+import { canonicalSessionID, disguiseHeaders, opencodeUserAgent, projectID } from '../src/ids.ts'
 // The lane-wide agent shape, shared with the runtime payload hook so a probe
 // and a real request can never disagree about what the free tier accepts.
 import { readTool } from '../src/shape.ts'
@@ -48,13 +48,14 @@ const HARD_CODES = new Set([400, 401])
 const today = () => new Date().toISOString().slice(0, 10)
 // Canonical session shape: the free tier rejects anything else with 403.
 const PROBE_SESSION = canonicalSessionID('opencode2pi:probe')
+// The runtime's own header set, not a hand-rolled copy: a probe that sends a
+// subset can pass while a real request fails (2026-10-15: the missing twin
+// `x-opencode-session-id` was a 403 here and in every CI run).
 const headers = (extra = {}) => ({
+  'content-type': 'application/json',
+  accept: 'application/json, text/event-stream',
   authorization: `Bearer ${ANONYMOUS}`,
-  'user-agent': opencodeUserAgent(),
-  'x-opencode-client': 'cli',
-  'x-opencode-session': PROBE_SESSION,
-  'x-session-affinity': PROBE_SESSION,
-  'X-Session-Id': PROBE_SESSION,
+  ...disguiseHeaders({ session: PROBE_SESSION, project: projectID('opencode2pi:probe') }),
   ...extra,
 })
 
@@ -150,10 +151,7 @@ export function selectCandidates(zenIds, prices, ledger, caps) {
 
 /** Native endpoint + auth per protocol (opencode2api protocolPath + lanu auth shapes). */
 export function probeRequest(id, protocol) {
-  const base = {
-    ...headers(),
-    'content-type': 'application/json',
-  }
+  const base = headers()
   // The gate only reads the genuine `read` entry; nothing else is compared.
   const tools = [readTool(protocol)]
   if (protocol === 'responses') {
