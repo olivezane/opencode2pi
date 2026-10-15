@@ -116,7 +116,10 @@ export function deriveRequestIDs(
   const ids: RequestIDs = {
     session: canonicalSessionID(sessionSignal(messages, options)),
     request: randomID('req', 16),
-    project: stableID('prj', 'opencode2pi:default-project'),
+    // The free lane validates `x-opencode-project` against the real client's
+    // default ("global"); arbitrary `prj_*` ids get 403 FreeTierError since
+    // the 2026-10-15 /inference/v1 migration.
+    project: 'global',
   }
   if (parent !== '') ids.parent = canonicalSessionID(parent)
   return ids
@@ -128,17 +131,20 @@ export function opencodeUserAgent(): string {
 }
 
 /**
- * The full disguise header set sent with every upstream request
- * (gateway.go newUpstreamRequest:640-669).
+ * The CLI-identical header set (model-request.ts createRequestHeaders):
+ * the real client sends no `x-opencode-request` — that header is added only
+ * by the opencode2api gateway when forwarding to upstream, and the free lane
+ * rejects requests carrying it with 403 FreeTierError since 2026-10-15
+ * (verified live). Keep this list exactly matching the client.
  */
 export function disguiseHeaders(ids: RequestIDs): Record<string, string> {
   return {
     'user-agent': opencodeUserAgent(),
     'x-opencode-client': 'cli',
+    'x-opencode-session-id': ids.session,
     'x-opencode-session': ids.session,
     'x-session-affinity': ids.session,
     'X-Session-Id': ids.session,
-    'x-opencode-request': ids.request,
     'x-opencode-project': ids.project,
     ...(ids.parent ? { 'x-parent-session-id': ids.parent } : {}),
   }

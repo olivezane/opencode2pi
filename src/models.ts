@@ -20,6 +20,15 @@ const num = (value: unknown, min: number): number | undefined =>
 
 export const ZEN_V1 = `${ZEN_BASE_URL.replace(/\/+$/, '')}/v1`
 
+/**
+ * The free chat lane: since 2026-10-15 the Zen gateway rejects `/zen/v1`
+ * chat completions with 403 FreeTierError and serves the anonymous lane from
+ * `/inference/v1` (verified live: same session id + agent-shape body returns
+ * 200 there while /zen/v1 stays 403). Note: `/inference` sits at the site
+ * root, NOT under `/zen`, so it cannot reuse ZEN_BASE_URL directly.
+ */
+export const INFERENCE_V1 = `${ZEN_BASE_URL.replace(/\/+$/, '').replace(/\/zen$/, '')}/inference/v1`
+
 /** The classifier wire API Zen serves: TypeSafe System One (`/zen/v1/systemone`). */
 export const CLASSIFIER_API = 'typesafe-system-one'
 
@@ -139,6 +148,11 @@ export function toPiModels(
       return {
         ...builtin,
         provider: PROVIDER_ID,
+        // The builtin opencode models carry Zen's own baseUrl (zen/v1), which
+        // the gateway rejects with 403 for the free lane since 2026-10-15.
+        // Re-point only the openai-completions wire models (chat lane) at
+        // /inference/v1; anthropic-messages models (paid) keep their lane.
+        ...(builtin.api === 'openai-completions' ? { baseUrl: INFERENCE_V1 } : {}),
         ...(m?.name ? { name: m.name } : {}),
         ...(contextWindow ? { contextWindow } : {}),
         ...(maxTokens ? { maxTokens } : {}),
@@ -153,7 +167,7 @@ export function toPiModels(
       api,
       provider: PROVIDER_ID,
       // the Anthropic SDK appends /v1/messages itself; openai layers want /v1
-      baseUrl: protocol === 'anthropic' ? ZEN_BASE_URL : ZEN_V1,
+      baseUrl: protocol === 'anthropic' ? ZEN_BASE_URL : INFERENCE_V1,
       reasoning,
       ...apiCompat(protocol, api),
       input: image ? ['text', 'image'] : ['text'],

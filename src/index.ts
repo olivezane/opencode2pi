@@ -34,7 +34,7 @@ import {
   CLASSIFIER_API,
   PROVIDER_ID,
   PROVIDER_NAME,
-  ZEN_V1,
+  INFERENCE_V1,
   decodeModelsDevMeta,
   toPiClassifiers,
   toPiModels,
@@ -131,7 +131,7 @@ function buildProvider(cat: ModelCatalog): Provider<Api> {
   return createProvider<Api>({
     id: PROVIDER_ID,
     name: PROVIDER_NAME,
-    baseUrl: ZEN_V1,
+    baseUrl: INFERENCE_V1,
     auth: {
       apiKey: {
         name: 'OpenCode Zen anonymous lane (no key)',

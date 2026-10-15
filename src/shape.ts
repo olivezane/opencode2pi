@@ -3,10 +3,14 @@
  *
  * Since 2026-09-20 the free tier answers `403 FreeTierError` unless the request
  * body carries streaming plus the core agent tools (`bash` and `read`) in
- * `tools`. Only the names are checked; the definitions may be minimal. pi
- * declares its built-in tools on every normal run, so this fires for tool-free
- * invocations (`-nt`, `--no-builtin-tools` with no extension tools) — without
- * it those requests look like a broken lane and cool the model down.
+ * `tools`. The names are checked; since the 2026-10-15 `/inference/v1`
+ * migration the gate also rejects tool entries whose `parameters` are empty
+ * (verified live: `properties: {}` → 403, concrete `command`/`path` schemas →
+ * 200), so each synthesized tool carries the same parameter shape the real
+ * client declares. pi declares its built-in tools on every normal run, so this
+ * fires for tool-free invocations (`-nt`, `--no-builtin-tools` with no
+ * extension tools) — without it those requests look like a broken lane and
+ * cool the model down.
  *
  * Only the two names the gate actually requires are synthesized, not the wider
  * CLI toolset opencode2api uses: an injected tool is a tool the model can call
@@ -21,15 +25,25 @@ export type ShapeProtocol = 'chat' | 'responses' | 'anthropic'
 /** Tool names the free tier requires on every request. */
 export const AGENT_TOOLS: readonly string[] = ['bash', 'read']
 
-const TOOL_PARAMETERS = { type: 'object', properties: {} }
+/** Real-client parameter shapes per agent tool (packages/opencode tools). */
+const AGENT_TOOL_PARAMETERS: Record<string, Record<string, unknown>> = {
+  bash: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] },
+  read: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+}
+const FALLBACK_PARAMETERS = { type: 'object', properties: {} }
+
+function toolParameters(name: string): Record<string, unknown> {
+  return AGENT_TOOL_PARAMETERS[name] ?? FALLBACK_PARAMETERS
+}
 
 /** The given tool names in the native tool shape of one protocol. */
 export function agentTools(protocol: ShapeProtocol, names: readonly string[] = AGENT_TOOLS): Array<Record<string, unknown>> {
   return names.map((name) => {
     const description = `Agent tool ${name}`
-    if (protocol === 'anthropic') return { name, description, input_schema: TOOL_PARAMETERS }
-    if (protocol === 'responses') return { type: 'function', name, description, parameters: TOOL_PARAMETERS }
-    return { type: 'function', function: { name, description, parameters: TOOL_PARAMETERS } }
+    const parameters = toolParameters(name)
+    if (protocol === 'anthropic') return { name, description, input_schema: parameters }
+    if (protocol === 'responses') return { type: 'function', name, description, parameters }
+    return { type: 'function', function: { name, description, parameters } }
   })
 }
 

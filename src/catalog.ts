@@ -8,7 +8,7 @@ import { opencodeUserAgent } from './ids.ts'
  * Port of agent/internal/catalog (opencode2api models.go + model_metadata.go,
  * trimmed to the single anonymous Zen lane) plus the S3 static fallback:
  *
- *   S1  GET {zen}/v1/models            live catalog (in-sale ids, free or paid)
+ *   S1  GET {zen}/inference/v1/models  live catalog (in-sale ids, free or paid)
  *   S2  GET https://models.dev/api.json  pricing metadata -> free decision
  *   S3  compile-time verified ids       last-resort bootstrap list
  *
@@ -674,7 +674,7 @@ export async function fetchZenModels(
   userAgent: string,
 ): Promise<string[]> {
   const response = await withTimeout(
-    fetchImpl(`${zenBaseUrl.replace(/\/+$/, '')}/v1/models`, {
+    fetchImpl(`${zenBaseUrl.replace(/\/+$/, '').replace(/\/zen$/, '')}/inference/v1/models`, {
       headers: {
         authorization: 'Bearer public',
         'user-agent': userAgent,
