@@ -2,9 +2,9 @@ import { createHash, randomBytes } from 'node:crypto'
 
 /**
  * Port of agent/internal/ids + identity (opencode2api ids.go / request.go):
- * stable session/project ids derived from the conversation, a per-request
- * random id, and canonical session shaping. The upstream sees CLI-identical
- * correlation headers built from these (index.ts).
+ * a stable project id plus a session derived from the conversation and shaped
+ * canonically. The upstream sees CLI-identical correlation headers built from
+ * these (index.ts).
  */
 
 export interface RequestIDs {

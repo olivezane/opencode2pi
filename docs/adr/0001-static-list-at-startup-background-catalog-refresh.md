@@ -4,7 +4,8 @@ pi's documented pattern for dynamic model discovery is an async extension
 factory that awaits the first fetch before `registerProvider` (pi blocks
 startup until the factory resolves). We deliberately deviate: the factory is
 synchronous and registers the S3 static list immediately, while the live
-catalog (S1 live fetch ∩ free-by-metadata, S2 disk cache) refreshes in the
+catalog (S1 live fetch ∩ S2 free-by-metadata, with the models.dev disk cache as
+a backstop) refreshes in the
 background and re-registers when it lands.
 
 Why: pi startup is interactive, and this package's primary audience sits

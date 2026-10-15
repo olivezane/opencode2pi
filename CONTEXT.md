@@ -30,10 +30,10 @@ to every model whose provider is `opencode*` or whose baseUrl host is
 `opencode.ai`, and that raw session id is exactly what the free tier rejects.
 _Avoid_: fake headers, spoofing
 
-**Derived session ID / derived request ID**:
-SHA-256 values computed from the conversation (session, stable per pi session
-or per conversation) and per request (random-ish), mirroring CLI behavior.
-Non-reversible. Colloquially "the ids".
+**Derived session ID**:
+SHA-256 values computed from the conversation, stable per pi session or per
+conversation, mirroring CLI behavior; the project id is derived the same way
+but never changes. Non-reversible. Colloquially "the ids".
 _Avoid_: fake session id
 
 **Agent shape**:
@@ -94,7 +94,7 @@ borrowed through `providers/all` rather than reimplemented: pi's extension
 loader does not alias `api/*` subpaths, so the System One factory is not
 importable from a published package. Requests need no disguise headers (the
 lane answers a bare `Bearer public` request), and the runtime cooldown hides
-the classifier on a hard 400/401 like any other model.
+the classifier on a hard 400/401/403 like any other model.
 _Avoid_: jev support, classifier model type
 
 **Capability catalog**:
@@ -133,11 +133,11 @@ pi-ai's retry domain (maxRetries). 403 belongs to the hard set because nothing
 else owns it: pi-ai retries only 408/409/429/5xx, so a `FreeTierError` would
 otherwise reach the user on every request instead of hiding the model. The
 next successful reply clears the cooldown. Reacts within the session, unlike
-the daily probe ledger.
+the probe ledger.
 _Avoid_: runtime ban, blacklist
 
 **Fallback chain**:
-Catalog resolution order: S1 live `GET /v1/models` → S2 offline disk cache (~7-day TTL) → S3 compile-time verified static list. Currently two tiers: live-data + the probe ledger below.
+Catalog resolution order: S1 live `GET /v1/models` → S2 models.dev pricing metadata → free decision (a disk cache, ~7-day TTL, stands in for S2 while models.dev is unreachable) → S3 compile-time verified static list. S3 is what the picker gets at startup; S1 ∩ S2 replaces it in place once the background refresh lands.
 _Avoid_: tier system
 
 **Probe ledger** (`src/free-models.json`):
@@ -145,9 +145,9 @@ The single machine-maintained data file holding the two static id lists — `ver
 _Avoid_: ban list, blacklist
 
 **Verified / banned**:
-A model is *verified* when a probe chat returns 200 — it may be exposed. A model is *banned* after two consecutive daily hard failures (400/401 only); flaky probes (timeout, 429, 5xx) never ban, and recovery moves an id back to verified at the next run.
+A model is *verified* when a probe on its native protocol returns 200 — it may be exposed. A model is *banned* after two consecutive probe days of hard failures (400/401 only); flaky probes (timeout, 429, 5xx) never ban, and recovery moves an id back to verified at the next run.
 _Avoid_: blocked (reserved: upstream 401s on paid models are not "banned", they are not free)
 
 **Free-set rotation**:
-OpenCode rotates the anonymous lane's free set on a day scale; the probe ledger refreshes twice daily via `.github/workflows/probe-models.yml` (00:00/12:00 UTC), keeping the picker aligned with what the lane actually serves.
+OpenCode rotates the anonymous lane's free set on a day scale; the probe ledger refreshes twice daily via `.github/workflows/probe-models.yml` (00:00/12:00 UTC). The S3 static list is a snapshot of that ledger taken at build time, so the live S1/S2 view is what keeps the picker aligned with what the lane actually serves.
 _Avoid_: model churn

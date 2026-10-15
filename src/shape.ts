@@ -9,7 +9,7 @@
  *
  * So: keep whatever the caller declared, replace the definition of recognised
  * names with the genuine one, and make sure `read` is there. Tool order is
- * irrelevant and unknown names are not checked. The daily probe re-checks the
+ * irrelevant and unknown names are not checked. The probe re-checks the
  * requirement and fails loudly if it widens.
  */
 

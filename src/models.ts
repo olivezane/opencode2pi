@@ -20,7 +20,7 @@ const num = (value: unknown, min: number): number | undefined =>
 
 export const ZEN_V1 = `${ZEN_BASE_URL.replace(/\/+$/, '')}/v1`
 
-/** The classifier wire API Zen serves: TypeSafe System One (`/zen/v1/systemone`). */
+/** The classifier wire API Zen serves: TypeSafe System One (`/inference/v1/systemone`). */
 export const CLASSIFIER_API = 'typesafe-system-one'
 
 /**
@@ -106,10 +106,11 @@ function builtinClassifier(id: string): ClassifierModel<ClassifierApi> | undefin
 
 /**
  * Build the classifier models: the builtin Zen classifier entries (they carry
- * the System One api, the `/zen/v1` base URL and their own context window),
- * re-homed to this provider. Only ids the builtin catalog declares as
- * classifiers are accepted — any other id would need a wire layer this
- * package does not own.
+ * the System One api, the builtin's retired `/zen/v1` base URL — the System One
+ * lane was unreachable upstream on both hosts, so it is not re-homed — and
+ * their own context window), re-homed to this provider. Only ids the builtin
+ * catalog declares as classifiers are accepted — any other id would need a
+ * wire layer this package does not own.
  */
 export function toPiClassifiers(ids: string[]): Array<ClassifierModel<ClassifierApi>> {
   return ids.flatMap((id) => {

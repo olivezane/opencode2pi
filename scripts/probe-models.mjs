@@ -2,7 +2,8 @@
 /**
  * Probe the OpenCode Zen anonymous lane and refresh the free-model ledger
  * (src/free-models.json). Zero dependencies (global fetch). Designed to be
- * run by .github/workflows/probe-models.yml daily and manually at any time:
+ * run by .github/workflows/probe-models.yml twice daily and manually at any
+ * time:
  *
  *   node scripts/probe-models.mjs
  *
@@ -83,8 +84,8 @@ async function main() {
     // ponytail: a classifier id (Zen's System One lane, e.g. jev-1.13-free) has
     // no capability-catalog protocol and is probed as chat, where the lane
     // answers a 5xx — indeterminate, so the ledger never bans it. Upgrade path:
-    // probe /zen/v1/systemone once the classifier ids are known without pulling
-    // pi-ai in (this script runs in CI with no node_modules).
+    // probe /inference/v1/systemone once the classifier ids are known without
+    // pulling pi-ai in (this script runs in CI with no node_modules).
     const protocol = caps?.protocols.get(id) ?? 'chat'
     const { status, gate } = await probe(id, protocol)
     if (gate) gateFailures++

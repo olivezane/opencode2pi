@@ -31,7 +31,7 @@ export const CAPABILITIES_URL = 'https://models.opencode.ai/api.json'
 export const DOCS_URL =
   'https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/zen.mdx'
 
-/** Slow-moving data (capability catalog, models.dev prices): refresh daily. */
+/** Slow-moving data (capability catalog): refresh daily. */
 const DAILY_REFRESH_MS = 24 * 60 * 60 * 1000
 
 export type ZenProtocol = 'chat' | 'responses' | 'anthropic'
@@ -230,8 +230,8 @@ export function isRouteable(caps: ZenCapabilities, model: string): boolean {
 
 /**
  * Verified/banned ids from the probe ledger (free-models.json), which the
- * daily workflow (scripts/probe-models.mjs) rewrites from real lane probes.
- * Mitigated externally never changed by hand except via the script.
+ * probe workflow (scripts/probe-models.mjs) rewrites from real lane probes.
+ * Never edited by hand.
  */
 export const staticFreeModels: string[] = ledger.verified.map((entry) => entry.id)
 export const staticUnavailable: string[] = ledger.unavailable.map((entry) => entry.id)
@@ -658,6 +658,9 @@ async function settledOrNull<T>(promise: Promise<T>): Promise<T | null> {
 }
 
 async function withTimeout(promise: Promise<Response>, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  // ponytail: `promise` is created by the caller without this signal, so the
+  // abort is a no-op — the timer only stops waiting. Upgrade path: thread the
+  // signal into the fetch callers (catalog.ts:197/212/533/676).
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {

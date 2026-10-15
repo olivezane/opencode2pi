@@ -48,7 +48,7 @@ import { agentShape, type ShapeProtocol } from './shape.ts'
  * Registers a native pi provider streaming directly from the OpenCode Zen
  * anonymous lane. The wire layer is pi-ai's openai-completions implementation
  * (the same one pi uses for every OpenAI-compatible provider); this module
- * adds the CLI disguise headers, the derived session/request ids, and the
+ * adds the CLI disguise headers, the derived session/project ids, and the
  * free-model catalog (see CONTEXT.md for the vocabulary).
  *
  * Registration model (docs/adr/0001): the factory is synchronous and registers
@@ -188,7 +188,7 @@ function zenApi(): Partial<Record<Api, ProviderStreams>> {
   //   x-opencode-session: <pi session id>   x-opencode-client: pi
   // Those arrive in `options.headers`, and the raw pi session id is not a
   // canonical OpenCode session — the free tier answers 403 FreeTierError for
-  // any other shape (since 2026-09-16). The CLI-identical set must win.
+  // any other shape (since 2026-10-14). The CLI-identical set must win.
   const inject = (context: Context, options?: SimpleStreamOptions): SimpleStreamOptions => {
     const ids = deriveRequestIDs(context.messages, { sessionId: options?.sessionId, metadata: options?.metadata })
     const apiKey = options?.apiKey || ANONYMOUS_KEY
