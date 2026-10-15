@@ -30,11 +30,12 @@ import { CAPABILITIES_URL, fetchZenCapabilities, isRouteable } from '../src/cata
 import { canonicalSessionID, opencodeUserAgent } from '../src/ids.ts'
 // The lane-wide agent shape, shared with the runtime payload hook so a probe
 // and a real request can never disagree about what the free tier accepts.
-import { agentTools } from '../src/shape.ts'
+import { readTool } from '../src/shape.ts'
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 const LEDGER_PATH = resolve(ROOT, 'src/free-models.json')
-const ZEN_BASE = 'https://opencode.ai/zen'
+// Keyless inference moved off /zen onto its own host on 2026-10-14.
+const ZEN_BASE = 'https://opencode.ai/inference'
 const METADATA_URL = 'https://models.dev/api.json'
 const ANONYMOUS = 'public'
 const PROBE_SPACING_MS = 8000
@@ -51,6 +52,7 @@ const headers = (extra = {}) => ({
   authorization: `Bearer ${ANONYMOUS}`,
   'user-agent': opencodeUserAgent(),
   'x-opencode-client': 'cli',
+  'x-opencode-session': PROBE_SESSION,
   'x-session-affinity': PROBE_SESSION,
   'X-Session-Id': PROBE_SESSION,
   ...extra,
@@ -95,7 +97,7 @@ async function main() {
   // breakage, so refuse to write and fail loudly instead.
   if (gateFailures > 0 && gateFailures === candidates.length) {
     throw new Error(
-      `${gateFailures} probes answered 403 FreeTierError: the free tier stopped accepting the probe request shape (agentTools)`,
+      `${gateFailures} probes answered 403 FreeTierError: the free tier stopped accepting the probe request shape (readTool)`,
     )
   }
 
@@ -151,13 +153,14 @@ export function probeRequest(id, protocol) {
   const base = {
     ...headers(),
     'content-type': 'application/json',
-    'x-opencode-request': `req_${Math.random().toString(16).slice(2)}`,
   }
+  // The gate only reads the genuine `read` entry; nothing else is compared.
+  const tools = [readTool(protocol)]
   if (protocol === 'responses') {
     return {
       url: `${ZEN_BASE}/v1/responses`,
       headers: base,
-      body: { model: id, input: 'hi', stream: true, tools: agentTools(protocol) },
+      body: { model: id, input: 'hi', stream: true, tools },
     }
   }
   if (protocol === 'anthropic') {
@@ -171,7 +174,7 @@ export function probeRequest(id, protocol) {
         messages: [{ role: 'user', content: 'hi' }],
         max_tokens: MAX_TOKENS,
         stream: true,
-        tools: agentTools(protocol),
+        tools,
       },
     }
   }
@@ -183,7 +186,7 @@ export function probeRequest(id, protocol) {
       messages: [{ role: 'user', content: 'hi' }],
       max_tokens: MAX_TOKENS,
       stream: true,
-      tools: agentTools(protocol),
+      tools,
     },
   }
 }

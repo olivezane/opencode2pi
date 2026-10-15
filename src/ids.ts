@@ -9,7 +9,6 @@ import { createHash, randomBytes } from 'node:crypto'
 
 export interface RequestIDs {
   session: string
-  request: string
   project: string
   /** Parent conversation, when the caller declares one (subagent sessions). */
   parent?: string
@@ -17,30 +16,53 @@ export interface RequestIDs {
 
 /**
  * OpenCode's canonical session shape: "ses_" + 12 lowercase hex characters +
- * 14 Base62 characters. Since 2026-09-16 the Zen free tier rejects any other
- * shape with 403 FreeTierError ("OpenCode's free tier can only be used from
- * within OpenCode"), so every derived session must match this.
+ * 14 Base62 characters.
  */
 const CANONICAL_SESSION_PATTERN = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/
-const BASE62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
 /**
- * Canonicalize a session signal: an already-official OpenCode session passes
- * through untouched (preserving upstream prompt-cache affinity), anything else
- * is deterministically hashed into the canonical shape so one conversation
- * keeps one stable session.
+ * The 12 hex characters encode `~(timestamp_ms << 12 | counter)` with the
+ * counter in 1..63, so a real OpenCode session's time part always ends in ffe
+ * (range ffc0..ffff). Since 2026-10-14 the free tier decodes those bits and
+ * rejects anything else with 403 FreeTierError ("OpenCode's free tier can only
+ * be used from within OpenCode"); a raw sha256 prefix passes the shape check
+ * but lands in the accepted window only ~1.5% of the time.
+ */
+const DESCENDING_TIME_PART_PATTERN = /^[0-9a-f]{9}f[c-f][0-9a-f]$/
+const BASE62_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+
+/** 36 hash bits -> the descending-time encoding upstream expects (request.go). */
+function descendingTimePart(sum: Buffer): string {
+  const bits = (BigInt(`0x${sum.subarray(0, 4).toString('hex')}`) << 4n) | BigInt(sum[4]! >> 4)
+  return ((~(bits << 12n | 1n)) & 0xffffffffffffn).toString(16).padStart(12, '0')
+}
+
+/**
+ * Canonicalize a session signal: an already-official OpenCode session (both
+ * the shape and the descending time part) passes through untouched
+ * (preserving upstream prompt-cache affinity and quota grouping), anything
+ * else is deterministically hashed into the canonical shape so one
+ * conversation keeps one stable session.
  */
 export function canonicalSessionID(signal: string): string {
-  if (CANONICAL_SESSION_PATTERN.test(signal)) return signal
+  if (CANONICAL_SESSION_PATTERN.test(signal) && DESCENDING_TIME_PART_PATTERN.test(signal.slice(4, 16))) return signal
   const sum = createHash('sha256').update(`ses\x00${signal}`).digest()
-  const timePart = sum.subarray(0, 6).toString('hex')
   let remainder = BigInt(`0x${sum.subarray(6, 16).toString('hex')}`)
   let randomPart = ''
   for (let index = 0; index < 14; index += 1) {
     randomPart = BASE62_ALPHABET.charAt(Number(remainder % 62n)) + randomPart
     remainder /= 62n
   }
-  return `ses_${timePart}${randomPart}`
+  return `ses_${descendingTimePart(sum)}${randomPart}`
+}
+
+/**
+ * The value of `x-opencode-project`. A canonical `prj_*` id is rejected with
+ * 403 since 2026-10-14; upstream mints a bare 40-character lowercase hex
+ * digest instead (the value itself is never read, only its shape).
+ */
+export function projectID(value: string): string {
+  return createHash('sha256').update(`opencode-project\x00${value}`).digest().subarray(0, 20).toString('hex')
 }
 
 /** sha256("prefix\0value") truncated to 12 bytes: stable, non-reversible. */
@@ -105,30 +127,34 @@ export function deriveRequestIDs(
   const parent = metadataString(options.metadata, 'parent_session_id')
   const ids: RequestIDs = {
     session: canonicalSessionID(sessionSignal(messages, options)),
-    request: randomID('req', 16),
-    project: stableID('prj', 'opencode2pi:default-project'),
+    project: projectID('opencode2pi:default-project'),
   }
   if (parent !== '') ids.parent = canonicalSessionID(parent)
   return ids
 }
 
-/** CLI-identical user agent (ids.go opencodeUserAgent, node runtime values). */
+/**
+ * CLI-identical user agent (httpx/client.go UserAgent). The dated
+ * `opencode/<version> (<os> <arch>; <runtime>)` form this replaced is
+ * rejected with 403 FreeTierError once the rest of the request matches.
+ */
 export function opencodeUserAgent(): string {
-  return `opencode/1.18.31 (${process.platform} ${process.arch}; node${process.versions.node})`
+  return 'opencode/latest/2.0.29/cli'
 }
 
 /**
- * The full disguise header set sent with every upstream request
- * (gateway.go newUpstreamRequest:640-669).
+ * The disguise header set sent with every upstream request (upstream.go
+ * newUpstreamRequest). Two omissions are load-bearing: no `x-opencode-request`
+ * (any value -> 403) and a non-`prj_*` project id.
  */
 export function disguiseHeaders(ids: RequestIDs): Record<string, string> {
   return {
     'user-agent': opencodeUserAgent(),
     'x-opencode-client': 'cli',
     'x-opencode-session': ids.session,
+    'x-opencode-session-id': ids.session,
     'x-session-affinity': ids.session,
     'X-Session-Id': ids.session,
-    'x-opencode-request': ids.request,
     'x-opencode-project': ids.project,
     ...(ids.parent ? { 'x-parent-session-id': ids.parent } : {}),
   }

@@ -78,8 +78,8 @@ test('toPiModels dispatches the pi api layer by native protocol', () => {
   assert.equal(models.find((m) => m.id === 'a-free')?.api, 'anthropic-messages')
   assert.equal(models.find((m) => m.id === 'c-free')?.api, 'openai-completions', 'unknown protocol defaults to chat')
   // the Anthropic SDK appends /v1/messages itself, so its baseUrl is the host root
-  assert.equal(models.find((m) => m.id === 'a-free')?.baseUrl, 'https://opencode.ai/zen')
-  assert.equal(models.find((m) => m.id === 'c-free')?.baseUrl, 'https://opencode.ai/zen/v1')
+  assert.equal(models.find((m) => m.id === 'a-free')?.baseUrl, 'https://opencode.ai/inference')
+  assert.equal(models.find((m) => m.id === 'c-free')?.baseUrl, 'https://opencode.ai/inference/v1')
 })
 
 test('toPiModels builds complete pi models, defaulting what metadata lacks', () => {
@@ -93,7 +93,7 @@ test('toPiModels builds complete pi models, defaulting what metadata lacks', () 
   assert.equal(qwen.api, 'openai-completions')
   assert.equal(qwen.provider, PROVIDER_ID)
   assert.equal(qwen.baseUrl, ZEN_V1)
-  assert.equal(qwen.baseUrl, 'https://opencode.ai/zen/v1')
+  assert.equal(qwen.baseUrl, 'https://opencode.ai/inference/v1')
   assert.equal(qwen.reasoning, true)
   assert.deepEqual(qwen.input, ['text', 'image'])
   assert.deepEqual(qwen.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
@@ -157,7 +157,10 @@ test('toPiClassifiers serves the builtin Zen classifier on this provider', () =>
   assert.equal(jev.api, CLASSIFIER_API)
   assert.equal(jev.api, 'typesafe-system-one')
   assert.equal(jev.provider, PROVIDER_ID)
-  assert.equal(jev.baseUrl, ZEN_V1)
+  // The builtin entry pins its own baseUrl, which this package does not own.
+  // (The SystemOne classifier lane was unreachable upstream on both hosts
+  // when the anonymous lane moved, so it is not re-homed like the chat models.)
+  assert.equal(jev.baseUrl, 'https://opencode.ai/zen/v1')
   assert.equal(jev.contextWindow, 32000)
   assert.deepEqual(jev.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
 

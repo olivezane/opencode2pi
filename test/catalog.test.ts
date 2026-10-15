@@ -141,21 +141,21 @@ test('start() fast-retries while the live catalog is empty, then settles into th
 
 test('fetchZenModels sends the anonymous CLI disguise and parses ids', async () => {
   const capture: { url?: string; init?: RequestInit } = {}
-  const ids = await fetchZenModels('https://opencode.ai/zen/', fakeFetch({ 'https://opencode.ai/zen/v1/models': zenBody }, capture), opencodeUserAgent())
+  const ids = await fetchZenModels('https://opencode.ai/inference/', fakeFetch({ 'https://opencode.ai/inference/v1/models': zenBody }, capture), opencodeUserAgent())
   assert.deepEqual(ids, ['qwen-free', 'paid-model', 'ghost-free'])
-  assert.equal(capture.url, 'https://opencode.ai/zen/v1/models')
+  assert.equal(capture.url, 'https://opencode.ai/inference/v1/models')
   const headers = new Headers(capture.init?.headers)
   assert.equal(headers.get('authorization'), 'Bearer public')
   assert.equal(headers.get('x-opencode-client'), 'cli')
   assert.ok(headers.get('user-agent')?.startsWith('opencode/'))
   await assert.rejects(
-    fetchZenModels('https://opencode.ai/zen', fakeFetch({ 'https://opencode.ai/zen/v1/models': { data: [] } }), opencodeUserAgent()),
+    fetchZenModels('https://opencode.ai/inference', fakeFetch({ 'https://opencode.ai/inference/v1/models': { data: [] } }), opencodeUserAgent()),
     /empty list/,
   )
 })
 
 test('ModelCatalog intersects the live catalog with free decisions', async () => {
-  const catalog = new ModelCatalog({ fetchImpl: fakeFetch({ 'https://opencode.ai/zen/v1/models': zenBody, 'https://models.dev/api.json': metadataBody }) })
+  const catalog = new ModelCatalog({ fetchImpl: fakeFetch({ 'https://opencode.ai/inference/v1/models': zenBody, 'https://models.dev/api.json': metadataBody }) })
   try {
     await catalog.refreshOnce()
     assert.deepEqual(catalog.list(), ['ghost-free', 'qwen-free'], 'paid-model is filtered out')
@@ -194,7 +194,7 @@ const capabilityBody = {
   openai: { id: 'openai', api: 'https://api.openai.com/v1', npm: '@ai-sdk/openai', models: {} },
   opencode: {
     id: 'opencode',
-    api: 'https://opencode.ai/zen/v1',
+    api: 'https://opencode.ai/inference/v1',
     npm: '@ai-sdk/openai-compatible',
     models: {
       'qwen-free': { id: 'qwen-free', provider: { npm: '@ai-sdk/openai-compatible' } },
@@ -273,7 +273,7 @@ function freeCatalog() {
   const clock = { value: 0 }
   const catalog = new ModelCatalog({
     fetchImpl: fakeFetch({
-      'https://opencode.ai/zen/v1/models': { data: [{ id: 'qwen-free' }] },
+      'https://opencode.ai/inference/v1/models': { data: [{ id: 'qwen-free' }] },
       'https://models.dev/api.json': freeMetadata,
       'https://models.opencode.ai/api.json': capabilityBody,
     }),
@@ -286,7 +286,7 @@ test('decodeZenCapabilities carries real limits and modalities per model', () =>
   const caps = decodeZenCapabilities({
     opencode: {
       id: 'opencode',
-      api: 'https://opencode.ai/zen/v1',
+      api: 'https://opencode.ai/inference/v1',
       npm: '@ai-sdk/openai-compatible',
       models: {
         'claude-free': {
@@ -318,11 +318,11 @@ test('decodeProtocolDocs reads the published endpoint table', () => {
   const markdown = [
     '| Model | Model ID | Endpoint | AI SDK Package |',
     '| ----- | -------- | -------- | -------------- |',
-    '| Claude | claude-fable-5 | `https://opencode.ai/zen/v1/messages` | `@ai-sdk/anthropic` |',
-    '| GPT | gpt-6-astra | `https://opencode.ai/zen/v1/responses` | `@ai-sdk/openai` |',
-    '| DeepSeek | deepseek-v4-pro | `https://opencode.ai/zen/v1/chat/completions` | `@ai-sdk/openai-compatible` |',
+    '| Claude | claude-fable-5 | `https://opencode.ai/inference/v1/messages` | `@ai-sdk/anthropic` |',
+    '| GPT | gpt-6-astra | `https://opencode.ai/inference/v1/responses` | `@ai-sdk/openai` |',
+    '| DeepSeek | deepseek-v4-pro | `https://opencode.ai/inference/v1/chat/completions` | `@ai-sdk/openai-compatible` |',
     // no pi-ai layer: ignored, not invented
-    '| Gemini | gemini-3.1-pro | `https://opencode.ai/zen/v1/models/gemini-3.1-pro` | `@ai-sdk/google` |',
+    '| Gemini | gemini-3.1-pro | `https://opencode.ai/inference/v1/models/gemini-3.1-pro` | `@ai-sdk/google` |',
   ].join('\n')
   const documented = decodeProtocolDocs(markdown)
   assert.deepEqual([...documented], [
@@ -390,7 +390,7 @@ test('isRouteable accepts every protocol OpenCode’s catalog assigns and reject
 test('ModelCatalog exposes every known-protocol free model and excludes unsupported SDKs only', async () => {
   const catalog = new ModelCatalog({
     fetchImpl: fakeFetch({
-      'https://opencode.ai/zen/v1/models': { data: [{ id: 'qwen-free' }, { id: 'muse-free' }, { id: 'claude-free' }, { id: 'mystery-free' }, { id: 'weird-free' }] },
+      'https://opencode.ai/inference/v1/models': { data: [{ id: 'qwen-free' }, { id: 'muse-free' }, { id: 'claude-free' }, { id: 'mystery-free' }, { id: 'weird-free' }] },
       'https://models.dev/api.json': freeMetadata,
       'https://models.opencode.ai/api.json': capabilityBody,
     }),
@@ -426,7 +426,7 @@ test('reportFailure keeps a fixed cooldown window across repeats and success cle
 test('ids the anonymous lane fails on are banned from exposure', async () => {
   const catalog = new ModelCatalog({
     fetchImpl: fakeFetch({
-      'https://opencode.ai/zen/v1/models': { data: [{ id: 'deepseek-v4-flash-free' }, { id: 'big-pickle' }] },
+      'https://opencode.ai/inference/v1/models': { data: [{ id: 'deepseek-v4-flash-free' }, { id: 'big-pickle' }] },
       'https://models.dev/api.json': metadataBody,
     }),
     staticIds: ['big-pickle'],

@@ -90,18 +90,28 @@ pi session
 pi extension (src/index.ts) — registers provider "opencode2pi"
    │  pi-ai openai-completions stream
    │  + CLI-identical headers (applied after pi's own ones):
-   │    user-agent: opencode/…
-   │    x-opencode-client, x-opencode-session, x-session-affinity,
-   │    X-Session-Id, x-opencode-request, x-opencode-project
+   │    user-agent: opencode/latest/<ver>/cli
+   │    x-opencode-client, x-opencode-session, x-opencode-session-id,
+   │    x-session-affinity, X-Session-Id, x-opencode-project
    ▼
-https://opencode.ai/zen/v1        ← Authorization: Bearer public
+https://opencode.ai/inference/v1   ← Authorization: Bearer public
 ```
 
 - **Session correlation** — the session is the canonical OpenCode shape
-  (`ses_` + 12 hex + 14 Base62) the free tier requires; a declared pi session
-  is hashed into it deterministically, so one pi session keeps one upstream
-  session. Project ids are SHA-256 derived the same way, each request gets a
-  fresh random id, and pi's own attribution headers are overridden.
+  (`ses_` + 12 hex + 14 Base62) the free tier requires, and the 12 hex
+  characters decode as the CLI's descending millisecond timestamp; a declared
+  pi session is hashed into that shape deterministically, so one pi session
+  keeps one upstream session. Project ids are SHA-256 derived the same way,
+  and pi's own attribution headers are overridden. `x-opencode-request` and a
+  canonical `prj_*` project id are both answered with `403 FreeTierError`, so
+  neither is sent.
+- **Agent shape** — the body must ask for streaming and carry a tool named
+  `read` with a real parameter schema; since 2026-10-14 the free tier compares
+  every tool it recognises against the official CLI definition, so a
+  synthesized stub (an empty `properties`) under a recognised name — `bash`
+  included — poisons the request. The definitions of recognised names are
+  replaced with the genuine ones and unknown names are left exactly as pi
+  declared them.
 - **Registration model** ([ADR 0001](docs/adr/0001-static-list-at-startup-background-catalog-refresh.md))
   — the extension registers the verified static list immediately, so the
   picker is never empty and startup never blocks on the network; the live
@@ -114,7 +124,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
   back to the models.dev payload used for the free decision, then to
   conservative defaults. Pricing always comes from models.dev (zero here).
 - **Classification** — Zen's classifier lane speaks TypeSafe's System One
-  protocol at `/zen/v1/systemone`; the free classifier is registered as a pi
+  protocol at `/inference/v1/systemone`; the free classifier is registered as a pi
   classifier model (not a chat model, so the picker never shows it) and is
   reachable through pi's `models.classify()`.
 
@@ -138,7 +148,7 @@ https://opencode.ai/zen/v1        ← Authorization: Bearer public
 | The list looks short | The anonymous lane only serves the free subset (paid models answer 401) — that is the whole catalog, not a bug. Ids the lane fails on are banned via the probe ledger (`staticUnavailable` in `src/catalog.ts`). |
 | `lastError: "fetch failed"` persisting | Outbound HTTPS to `opencode.ai` blocked; check proxy/VPN rules. See `opencode2pi.log` for the full sequence. |
 | Rate-limit errors in chat | The anonymous lane is quota-per-IP; switch network node or wait. |
-| `403 FreeTierError` ("free tier can only be used from within OpenCode") | The request did not look like CLI traffic: the session was not in the canonical shape, or another layer overwrote `x-opencode-session`. Update the package; if it persists, an unrelated extension is stamping provider headers. |
+| `403 FreeTierError` ("free tier can only be used from within OpenCode") | The request did not look like CLI traffic: the host moved (use `https://opencode.ai/inference`), the session's twelve hex characters did not decode as the CLI's descending timestamp, `x-opencode-request` was sent, `x-opencode-project` carried a canonical `prj_*` id, or a recognised tool (`read`, `glob`, `bash`, …) carried an empty schema. Update the package; if it persists, an unrelated extension is stamping provider headers. |
 
 ## Security
 

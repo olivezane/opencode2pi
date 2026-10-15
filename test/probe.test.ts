@@ -8,7 +8,7 @@ import { probeRequest, selectCandidates } from '../scripts/probe-models.mjs'
 const capabilityBody = {
   opencode: {
     id: 'opencode',
-    api: 'https://opencode.ai/zen/v1',
+    api: 'https://opencode.ai/inference/v1',
     npm: '@ai-sdk/openai-compatible',
     models: {
       'qwen-free': { id: 'qwen-free', provider: { npm: '@ai-sdk/openai-compatible' } },
@@ -45,46 +45,39 @@ test('selectCandidates degrades to probing every candidate when capabilities are
 
 test('probeRequest builds the native endpoint per protocol', () => {
   const chat = probeRequest('x-free', 'chat')
-  assert.equal(chat.url, 'https://opencode.ai/zen/v1/chat/completions')
+  assert.equal(chat.url, 'https://opencode.ai/inference/v1/chat/completions')
   assert.equal(chat.headers.authorization, 'Bearer public')
   assert.deepEqual(chat.body.model, 'x-free')
 
   const responses = probeRequest('x-free', 'responses')
-  assert.equal(responses.url, 'https://opencode.ai/zen/v1/responses')
+  assert.equal(responses.url, 'https://opencode.ai/inference/v1/responses')
   assert.equal(responses.body.input, 'hi')
   assert.equal(responses.body.stream, true)
 
   const messages = probeRequest('x-free', 'anthropic')
-  assert.equal(messages.url, 'https://opencode.ai/zen/v1/messages')
+  assert.equal(messages.url, 'https://opencode.ai/inference/v1/messages')
   assert.equal(messages.headers['x-api-key'], 'public')
   assert.equal(messages.headers.authorization, undefined, 'anthropic auth is x-api-key, not Bearer')
   assert.deepEqual(messages.body.messages, [{ role: 'user', content: 'hi' }])
 })
 
 // The free tier answers 403 FreeTierError unless the request carries streaming
-// plus the core agent tools, so every probe body must stay agent-shaped.
+// plus a genuinely-defined `read` tool, and any `x-opencode-request` header.
 test('probeRequest sends agent-shaped bodies the free tier accepts', () => {
   assert.equal(probeRequest('x-free', 'chat').body.stream, true)
   assert.equal(probeRequest('x-free', 'anthropic').body.stream, true)
 
-  const chat = probeRequest('x-free', 'chat').body.tools
-  assert.deepEqual(
-    chat.map((tool: { function: { name: string } }) => tool.function.name),
-    ['bash', 'read'],
-  )
-  assert.deepEqual(chat[0].type, 'function')
+  const chat = probeRequest('x-free', 'chat')
+  assert.deepEqual(chat.body.tools.map((t: { function: { name: string } }) => t.function.name), ['read'])
+  assert.equal(chat.body.tools[0].type, 'function')
+  assert.equal(chat.headers['x-opencode-request'], undefined, 'that header is itself a 403')
+  assert.ok(Object.keys(chat.body.tools[0].function.parameters.properties).length > 0)
 
   const responses = probeRequest('x-free', 'responses').body.tools
-  assert.deepEqual(
-    responses.map((tool: { name: string }) => tool.name),
-    ['bash', 'read'],
-  )
-  assert.deepEqual(responses[0].type, 'function')
+  assert.deepEqual(responses.map((t: { name: string }) => t.name), ['read'])
+  assert.equal(responses[0].type, 'function')
 
   const messages = probeRequest('x-free', 'anthropic').body.tools
-  assert.deepEqual(
-    messages.map((tool: { name: string }) => tool.name),
-    ['bash', 'read'],
-  )
-  assert.deepEqual(messages[0].input_schema, { type: 'object', properties: {} })
+  assert.deepEqual(messages.map((t: { name: string }) => t.name), ['read'])
+  assert.deepEqual(messages[0].input_schema.required, ['path'])
 })

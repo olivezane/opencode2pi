@@ -8,6 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 test('the TUI gets the log file and never a stderr write', async () => {
   const home = await mkdtemp(join(tmpdir(), 'opencode2pi-log-'))
   const previousHome = process.env.HOME
+  const previousProfile = process.env.USERPROFILE
   const stderrWrites: string[] = []
   const originalWrite = process.stderr.write
   process.stderr.write = ((chunk: string | Uint8Array): boolean => {
@@ -15,6 +16,8 @@ test('the TUI gets the log file and never a stderr write', async () => {
     return true
   }) as unknown as typeof process.stderr.write
   process.env.HOME = home
+  // Node's homedir() reads USERPROFILE on Windows and HOME elsewhere.
+  process.env.USERPROFILE = home
   try {
     // Imported after HOME is set: the sink resolves its path at import time.
     const { logWarn } = await import('../src/logger.ts')
@@ -30,6 +33,7 @@ test('the TUI gets the log file and never a stderr write', async () => {
     assert.deepEqual(stderrWrites, [])
   } finally {
     process.env.HOME = previousHome
+    process.env.USERPROFILE = previousProfile
     process.stderr.write = originalWrite
   }
 })

@@ -12,7 +12,9 @@ directory (`~/.opencode2pi/`) all share this one name.
 _Avoid_: opencode2dsh, dsh-plugin
 
 **Zen**:
-OpenCode Zen (`https://opencode.ai/zen`) — OpenCode's model-serving endpoint.
+OpenCode Zen (`https://opencode.ai/inference`) — the host serving OpenCode's
+models. It moved off `https://opencode.ai/zen` in 2026-10-14, and the old host
+now answers `403 FreeTierError` for the anonymous lane.
 _Avoid_: upstream, opencode API
 
 **Anonymous lane**:
@@ -35,25 +37,36 @@ Non-reversible. Colloquially "the ids".
 _Avoid_: fake session id
 
 **Agent shape**:
-The request body the free tier accepts since 2026-09-20: streaming enabled
-plus `bash` and `read` present in `tools` (the names are what count, the
-definitions can be minimal). A body missing either half is answered with the
-same `403 FreeTierError` as a bad session, so a request without tools looks
-like a broken lane rather than a rejected shape. pi sends its built-in tools
-on every normal run, so only tool-free invocations (`-nt`, `--no-builtin-tools`
-with no extension tools) need the tools synthesized. Verified on chat and
-responses across every free model; a single tool, `bash` + `edit`, and
-`stream: false` all fail.
+The request body the free tier accepts since 2026-10-14: streaming enabled
+(`stream: true`, plus `stream_options.include_usage` on chat) and a tool named
+`read` carrying a real parameter schema. The definitions are what count now:
+upstream compares every tool whose name it recognises against the official
+CLI's own definition, so a synthesized stand-in — an empty `properties`, as
+this package emitted until 2026-10-15 — is answered with the same
+`403 FreeTierError` as a bad session. The CLI's shell tool is named `shell`,
+not `bash`. Names upstream does not recognise are never checked.
 _Avoid_: agent request, CLI shape
 
+**Genuine CLI tool definitions**:
+The `description` + `parameters` pairs the official OpenCode CLI declares for
+the tools it knows (`shell`, `edit`, `glob`, `grep`, `question`, `read`,
+`skill`, `subagent`, `webfetch`, `websearch`, `execute`, `write`), vendored in
+`src/opencode-tools.ts`. A recognised name in the outgoing body is rewritten to
+its genuine definition; `bash` is served the genuine `shell` definition under
+its own name, because a caller that declared `bash` needs that name back.
+_Avoid_: tool stubs, tool templates
+
 **Canonical session**:
-The only session shape the free tier accepts since 2026-09-16:
-`ses_` + 12 lowercase hex characters + 14 Base62 characters. A signal that
-already carries an official OpenCode session passes through untouched (it
-keeps upstream prompt-cache affinity); anything else — a pi session id, a
-UUID, a conversation seed — is hashed into that shape deterministically. Any
-other shape is answered with `403 FreeTierError` ("free tier can only be used
-from within OpenCode").
+The session shape the free tier accepts since 2026-10-14: `ses_` + 12 lowercase
+hex characters + 14 Base62 characters, where the 12 hex characters decode as
+the CLI's descending millisecond timestamp (`~(ms << 12 | counter)`, counter
+1..63, so they always end in `ffc0`..`ffff`). A signal that already carries a
+genuine session passes through untouched (it keeps upstream prompt-cache
+affinity); anything else — a pi session id, a UUID, a conversation seed — is
+hashed into that shape deterministically. A shape-correct id whose time part
+is not a descending timestamp is answered with `403 FreeTierError`("free tier
+can only be used from within OpenCode"), which is why the raw-SHA-256 time
+part this package emitted until 2026-10-15 failed every request.
 _Avoid_: valid session, session format
 
 **Session signal**:
@@ -72,7 +85,7 @@ _Avoid_: model list (except for the raw `/v1/models` response)
 
 **Classifier lane**:
 Zen's second lane: classification models (`jev-1.13`, `jev-1.13-free`) served
-over TypeSafe's System One protocol at `/zen/v1/systemone` — not chat
+over TypeSafe's System One protocol at `/inference/v1/systemone` — not chat
 completions. They are also a second pi *model type* (`type: "classifier"`), so
 they are registered as classifiers and never as chat models, reachable only
 through pi's classifier API (`models.classify`, codemode) — the picker never

@@ -90,6 +90,11 @@ function apiCompat(protocol: ZenProtocol | undefined, api: Api) {
   return {}
 }
 
+/** The base URL a model speaks: the Anthropic SDK appends /v1/messages itself. */
+function hostFor(api: Api): string {
+  return api === 'anthropic-messages' ? ZEN_BASE_URL : ZEN_V1
+}
+
 /** The builtin opencode classifier entry for an id, if the id names one. */
 function builtinClassifier(id: string): ClassifierModel<ClassifierApi> | undefined {
   const get = getBuiltinClassifierModel as (
@@ -139,6 +144,9 @@ export function toPiModels(
       return {
         ...builtin,
         provider: PROVIDER_ID,
+        // pi's builtin opencode entries still pin the retired /zen host, which
+        // now answers 403 for the anonymous lane: re-home them to the live one.
+        baseUrl: hostFor(builtin.api),
         ...(m?.name ? { name: m.name } : {}),
         ...(contextWindow ? { contextWindow } : {}),
         ...(maxTokens ? { maxTokens } : {}),
@@ -153,7 +161,7 @@ export function toPiModels(
       api,
       provider: PROVIDER_ID,
       // the Anthropic SDK appends /v1/messages itself; openai layers want /v1
-      baseUrl: protocol === 'anthropic' ? ZEN_BASE_URL : ZEN_V1,
+      baseUrl: hostFor(api),
       reasoning,
       ...apiCompat(protocol, api),
       input: image ? ['text', 'image'] : ['text'],
