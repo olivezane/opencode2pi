@@ -160,7 +160,8 @@ test('toPiClassifiers serves the builtin Zen classifier on this provider', () =>
   // The builtin entry pins its own baseUrl, which this package does not own.
   // (The SystemOne classifier lane was unreachable upstream on both hosts
   // when the anonymous lane moved, so it is not re-homed like the chat models.)
-  assert.equal(jev.baseUrl, 'https://opencode.ai/zen/v1')
+  // pi 1.x moved the builtin from the retired `/zen/v1` to `/inference/v1`.
+  assert.equal(jev.baseUrl, 'https://opencode.ai/inference/v1')
   assert.equal(jev.contextWindow, 32000)
   assert.deepEqual(jev.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
 

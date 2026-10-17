@@ -106,7 +106,7 @@ function builtinClassifier(id: string): ClassifierModel<ClassifierApi> | undefin
 
 /**
  * Build the classifier models: the builtin Zen classifier entries (they carry
- * the System One api, the builtin's retired `/zen/v1` base URL — the System One
+ * the System One api, the builtin's own base URL — the System One
  * lane was unreachable upstream on both hosts, so it is not re-homed — and
  * their own context window), re-homed to this provider. Only ids the builtin
  * catalog declares as classifiers are accepted — any other id would need a
