@@ -45,6 +45,10 @@
       "verified": "2026-09-03"
     },
     {
+      "id": "nemotron-3-ultra-free",
+      "verified": "2026-10-17"
+    },
+    {
       "id": "nemotron-3.5-lightning-free",
       "verified": "2026-09-01"
     },
@@ -99,21 +103,15 @@
       "lastCode": 401
     },
     {
+      "id": "step-5-preview-free",
+      "firstFailed": "2026-10-16",
+      "lastCode": 400
+    },
+    {
       "id": "union-alpha",
       "firstFailed": "2026-09-18",
       "lastCode": 400
     }
   ],
-  "pending": [
-    {
-      "id": "nemotron-3-ultra-free",
-      "firstFailed": "2026-10-16",
-      "lastCode": 400
-    },
-    {
-      "id": "step-5-preview-free",
-      "firstFailed": "2026-10-16",
-      "lastCode": 400
-    }
-  ]
+  "pending": []
 }
