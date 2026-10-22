@@ -21,6 +21,10 @@
       "verified": "2026-10-07"
     },
     {
+      "id": "flint-40b-free",
+      "verified": "2026-10-22"
+    },
+    {
       "id": "glm-5.3-flash-free",
       "verified": "2026-10-16"
     },
@@ -55,10 +59,6 @@
     {
       "id": "nemotron-3.5-super-vl-free",
       "verified": "2026-10-15"
-    },
-    {
-      "id": "space-bunny-free",
-      "verified": "2026-09-23"
     }
   ],
   "unavailable": [
@@ -98,6 +98,11 @@
       "lastCode": 400
     },
     {
+      "id": "ll-alpha-free",
+      "firstFailed": "2026-10-21",
+      "lastCode": 400
+    },
+    {
       "id": "mimo-v2.5-free",
       "firstFailed": "2026-10-07",
       "lastCode": 401
@@ -115,8 +120,8 @@
   ],
   "pending": [
     {
-      "id": "ll-alpha-free",
-      "firstFailed": "2026-10-21",
+      "id": "space-bunny-free",
+      "firstFailed": "2026-10-22",
       "lastCode": 400
     }
   ]
