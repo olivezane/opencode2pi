@@ -108,6 +108,11 @@
       "lastCode": 401
     },
     {
+      "id": "space-bunny-free",
+      "firstFailed": "2026-10-22",
+      "lastCode": 400
+    },
+    {
       "id": "step-5-preview-free",
       "firstFailed": "2026-10-16",
       "lastCode": 400
@@ -118,11 +123,5 @@
       "lastCode": 400
     }
   ],
-  "pending": [
-    {
-      "id": "space-bunny-free",
-      "firstFailed": "2026-10-22",
-      "lastCode": 400
-    }
-  ]
+  "pending": []
 }
