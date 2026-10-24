@@ -184,7 +184,9 @@ function zenApi(): Partial<Record<Api, ProviderStreams>> {
   //
   // The disguise goes LAST on purpose. pi stamps its own attribution on every
   // request to any `opencode*` provider or `opencode.ai` baseUrl
-  // (pi-coding-agent core/provider-attribution.js getSessionHeaders):
+  // (pi-ai utils/identity.js getIdentityHeaders, fed by pi-coding-agent
+  // core/client-identity.js getClientIdentity; pre-1.4 it was
+  // core/provider-attribution.js getSessionHeaders):
   //   x-opencode-session: <pi session id>   x-opencode-client: pi
   // Those arrive in `options.headers`, and the raw pi session id is not a
   // canonical OpenCode session — the free tier answers 403 FreeTierError for

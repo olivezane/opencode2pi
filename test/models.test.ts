@@ -111,7 +111,10 @@ test('toPiModels builds complete pi models, defaulting what metadata lacks', () 
 })
 
 test('toPiModels incorporates builtin models matching /login behavior', () => {
-  const models = toPiModels(['big-pickle', 'muse-spark-1.3-contributor-free', 'mimo-v2.6-flash-free'], new Map())
+  // `muse-spark-1.3` (no -free suffix) is the id pi's builtin opencode table has
+  // kept stable across 1.3.0 and 1.4.0; the contributor-free variant was dropped
+  // in 1.4.0, which turned this assertion into a synthesis test by accident.
+  const models = toPiModels(['big-pickle', 'muse-spark-1.3', 'mimo-v2.6-flash-free'], new Map())
   assert.equal(models.length, 3)
 
   const pickle = models.find((m) => m.id === 'big-pickle')!
@@ -126,7 +129,7 @@ test('toPiModels incorporates builtin models matching /login behavior', () => {
     maxTokensField: 'max_tokens',
   })
 
-  const muse = models.find((m) => m.id === 'muse-spark-1.3-contributor-free')!
+  const muse = models.find((m) => m.id === 'muse-spark-1.3')!
   assert.equal(muse.provider, PROVIDER_ID)
   assert.equal(muse.api, 'openai-responses')
   assert.deepEqual(muse.compat, {
