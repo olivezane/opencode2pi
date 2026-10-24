@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { decodeZenCapabilities } from '../src/catalog.ts'
 import { disguiseHeaders } from '../src/ids.ts'
 // @ts-expect-error scripts are plain ESM with no .d.ts
-import { probeRequest, selectCandidates } from '../scripts/probe-models.mjs'
+import { countsAsVerified, probeRequest, selectCandidates } from '../scripts/probe-models.mjs'
 
 const capabilityBody = {
   opencode: {
@@ -22,11 +22,10 @@ const capabilityBody = {
 
 const zenIds = ['qwen-free', 'muse-free', 'claude-free', 'weird-free', 'mystery-free']
 const prices = new Set(zenIds)
-const ledger = { verified: [], unavailable: [], pending: [] }
 
 test('selectCandidates keeps every known-protocol id for native probing and skips unsupported SDKs', () => {
   const caps = decodeZenCapabilities(capabilityBody)
-  assert.deepEqual(selectCandidates(zenIds, prices, ledger, caps), [
+  assert.deepEqual(selectCandidates(zenIds, prices, caps), [
     'claude-free',
     'muse-free',
     'mystery-free',
@@ -35,13 +34,31 @@ test('selectCandidates keeps every known-protocol id for native probing and skip
 })
 
 test('selectCandidates degrades to probing every candidate when capabilities are unavailable', () => {
-  assert.deepEqual(selectCandidates(zenIds, prices, ledger, null), [
+  assert.deepEqual(selectCandidates(zenIds, prices, null), [
     'claude-free',
     'muse-free',
     'mystery-free',
     'qwen-free',
     'weird-free',
   ])
+})
+
+test('selectCandidates probes only what /v1/models lists, never a ledger-only id', () => {
+  // 2026-10-24: the ledger used to feed the probe set too, so 18 ids Zen had
+  // stopped serving were re-probed twice a day forever.
+  const stale = ['gone-free', 'cat-jam-free']
+  for (const id of stale) assert.equal(zenIds.includes(id), false, `${id} is no longer served`)
+  assert.deepEqual(selectCandidates(zenIds, prices, null), [...zenIds].sort())
+})
+
+test('countsAsVerified treats a spent egress IP as proof the model is served and free', () => {
+  // 2026-10-24: a blocked IP lasts long enough that calling 429 indeterminate
+  // would freeze a ban forever, so 429 must clear pending/unavailable like 200.
+  assert.equal(countsAsVerified(200), true)
+  assert.equal(countsAsVerified(429), true)
+  assert.equal(countsAsVerified(400), false, '400 is a real rejection')
+  assert.equal(countsAsVerified(401), false, '401 means not in the free set')
+  assert.equal(countsAsVerified(410), false, '410 means retired')
 })
 
 test('probeRequest builds the native endpoint per protocol', () => {
@@ -60,6 +77,11 @@ test('probeRequest builds the native endpoint per protocol', () => {
   assert.equal(messages.headers['x-api-key'], 'public')
   assert.equal(messages.headers.authorization, undefined, 'anthropic auth is x-api-key, not Bearer')
   assert.deepEqual(messages.body.messages, [{ role: 'user', content: 'hi' }])
+
+  const classifier = probeRequest('x-free', 'classifier')
+  assert.equal(classifier.url, 'https://opencode.ai/inference/v1/systemone')
+  assert.equal(classifier.body.state !== undefined, true, 'System One takes a state, not messages')
+  assert.equal(classifier.body.questions.probe.type, 'noul', 'bool questions are noul on the wire')
 })
 
 // The free tier answers 403 FreeTierError unless the request carries streaming
@@ -96,3 +118,4 @@ test('the probe sends exactly the runtime header set', () => {
     assert.equal(chat.headers[name], value, `probe must send ${name}=${value}`)
   }
 })
+

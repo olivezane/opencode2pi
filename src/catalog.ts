@@ -233,8 +233,10 @@ export function isRouteable(caps: ZenCapabilities, model: string): boolean {
  * probe workflow (scripts/probe-models.mjs) rewrites from real lane probes.
  * Never edited by hand.
  */
-export const staticFreeModels: string[] = ledger.verified.map((entry) => entry.id)
-export const staticUnavailable: string[] = ledger.unavailable.map((entry) => entry.id)
+// The JSON import infers `never[]` for an empty section, so the element type is
+// spelled out: a ledger that has banned nothing yet is the normal case.
+export const staticFreeModels: string[] = ledger.verified.map((entry: { id: string }) => entry.id)
+export const staticUnavailable: string[] = ledger.unavailable.map((entry: { id: string }) => entry.id)
 
 export function isFreeModel(model: string): boolean {
   return model.toLowerCase().includes('free')

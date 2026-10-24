@@ -8,16 +8,29 @@
  *   node scripts/probe-models.mjs
  *
  * Policy (grilled 2026-09-01, see CONTEXT.md "Probe ledger"):
- *   - verified:  probe answered 200 today -> exposed (static bootstrap + live)
+ *   - verified:  probe answered 200 (or 429 — see below) today -> exposed
+ *                (static bootstrap + live)
  *   - pending:   hard-failed once (400/401/410) -> recorded, still exposed via
  *                live metadata; promoted to banned if it fails again on a
  *                later day
  *   - unavailable (banned): hard-failed on two consecutive days -> excluded
- *   - recovery:  any id answering 200 today is removed from pending/unavailable
- *   - indeterminate (timeout, 429, network error, other status): leave the
- *     entry exactly as it is — never ban on a flaky probe
- *   - an id in the ledger that is no longer in /v1/models is probed anyway
- *     (401/4xx confirms it left the free set)
+ *   - recovery:  an id answering 200 today is removed from pending/unavailable
+ *   - indeterminate (timeout, network error, other status): leave the entry
+ *     exactly as it is — never ban on a flaky probe
+ *   - 429 (lane quota spent, per egress IP): verified, exactly like 200 —
+ *     the ledger answers "is this model free on the lane", not "does this IP
+ *     have quota today", and a spent IP lasts long enough that treating 429 as
+ *     indeterminate would freeze a ban forever.
+ *     Zen rations the anonymous lane per egress IP and pins retry-after to the
+ *     next UTC midnight, so a spent CI IP would otherwise hold the whole
+ *     served set unverified indefinitely (2026-10-24: three consecutive runs
+ *     recorded zero 200s and the ledger stopped meaning anything)
+ *   - every candidate is probed, every run: /v1/models lists ids the lane does
+ *     not actually serve, so a 429 on one id says nothing about the next one
+ *   - the probe set is exactly /v1/models: an id Zen stops listing leaves the
+ *     ledger on the next run, because the list never under-reports even though
+ *     it does name ids with no service behind them (2026-10-24: 18 ledger ids
+ *     were being re-probed twice a day forever after Zen dropped them)
  *
  * Hard exit (exit 1, no writes) if the upstream catalog or models.dev is
  * unreachable, so a network blip can never mass-rewrite the ledger.
@@ -80,18 +93,23 @@ async function main() {
   } catch (err) {
     console.warn(`capability catalog unavailable (${err instanceof Error ? err.message : String(err)}); probing every candidate`)
   }
-  const candidates = selectCandidates(zenIds, prices, ledger, caps)
+  const candidates = selectCandidates(zenIds, prices, caps)
 
   const verdicts = new Map()
   let gateFailures = 0
   for (const id of candidates) {
-    // ponytail: a classifier id (Zen's System One lane, e.g. jev-1.13-free) has
-    // no capability-catalog protocol and is probed as chat, where the lane
-    // answers a 5xx — indeterminate, so the ledger never bans it. Upgrade path:
-    // probe /inference/v1/systemone once the classifier ids are known without
-    // pulling pi-ai in (this script runs in CI with no node_modules).
+    // The capability catalog names a protocol for most ids; the rest degrade
+    // to chat, which is the common case (see the classifier fallback below).
     const protocol = caps?.protocols.get(id) ?? 'chat'
-    const { status, gate } = await probe(id, protocol)
+    let { status, gate } = await probe(id, protocol)
+    // 400 is "no such model on this endpoint", and the classifier lane is the
+    // only endpoint /v1/models names but never classifies. Retrying a 400 here
+    // cannot hide a broken chat model: a chat id that answers 400 on chat is
+    // not served on chat either way.
+    if (protocol === 'chat' && status === 400) {
+      const retry = await probe(id, 'classifier')
+      if (retry.status !== 400) ({ status, gate } = retry)
+    }
     if (gate) gateFailures++
     verdicts.set(id, status)
     console.log(`${String(status).padEnd(8)} ${id}${gate ? '  <- FreeTierError: probe request shape rejected' : ''}`)
@@ -101,7 +119,7 @@ async function main() {
   // A lane-wide shape rejection is not a per-model verdict. Writing the
   // ledger here would freeze every entry as indeterminate and hide the
   // breakage, so refuse to write and fail loudly instead.
-  if (gateFailures > 0 && gateFailures === candidates.length) {
+  if (gateFailures > 0 && gateFailures === verdicts.size) {
     throw new Error(
       `${gateFailures} probes answered 403 FreeTierError: the free tier stopped accepting the probe request shape (readTool)`,
     )
@@ -111,11 +129,15 @@ async function main() {
   const put = (section, entry) => next[section].push(entry)
   const byId = (a, b) => a.id.localeCompare(b.id)
 
+  // The ledger describes what /v1/models lists and nothing else: an id Zen
+  // stopped listing is dropped on the next run. The list over-reports (it names
+  // ids with no service behind them) but it never under-reports, so a name it
+  // drops is gone.
   for (const id of candidates) {
     const status = verdicts.get(id)
     const inUnavailable = ledger.unavailable.find((e) => e.id === id)
     const inPending = ledger.pending.find((e) => e.id === id)
-    if (status === 200) {
+    if (countsAsVerified(status)) {
       const alreadyVerified = ledger.verified.find((e) => e.id === id)
       put('verified', { id, verified: alreadyVerified ? alreadyVerified.verified : today() })
     } else if (HARD_CODES.has(status)) {
@@ -145,13 +167,21 @@ async function main() {
   )
 }
 
-/** Candidate set: free-ish ids + ledger ids; with capabilities known, skip ids whose SDK is unknown. */
-export function selectCandidates(zenIds, prices, ledger, caps) {
-  const currentIds = [...ledger.verified, ...ledger.unavailable, ...ledger.pending].map((e) => e.id)
-  const freeIds = zenIds.filter((id) => id.toLowerCase().includes('free') || prices.has(id))
-  const ids = [...new Set([...freeIds, ...currentIds])].sort()
-  if (!caps) return ids
-  return ids.filter((id) => isRouteable(caps, id))
+/** A 429 is a spent egress IP, not a verdict on the model: the id is served and free. */
+export function countsAsVerified(status) {
+  return status === 200 || status === 429
+}
+
+/**
+ * The probe set: ids /v1/models lists right now, free by name or by catalog
+ * price, minus those on an SDK with no endpoint mapping. The ledger never
+ * widens it: the list over-reports (names with no service behind them) but
+ * never under-reports, so an id it drops is gone.
+ */
+export function selectCandidates(zenIds, prices, caps) {
+  const ids = zenIds.filter((id) => id.toLowerCase().includes('free') || prices.has(id))
+  if (!caps) return [...new Set(ids)].sort()
+  return [...new Set(ids)].filter((id) => isRouteable(caps, id)).sort()
 }
 
 /** Native endpoint + auth per protocol (opencode2api protocolPath + lanu auth shapes). */
@@ -164,6 +194,25 @@ export function probeRequest(id, protocol) {
       url: `${ZEN_BASE}/v1/responses`,
       headers: base,
       body: { model: id, input: 'hi', stream: true, tools },
+    }
+  }
+  if (protocol === 'classifier') {
+    // Zen's System One lane. Its own endpoint, and a body shape of its own:
+    // `state` plus questions, with the bool type spelled `noul` on the wire.
+    return {
+      url: `${ZEN_BASE}/v1/systemone`,
+      headers: base,
+      body: {
+        model: id,
+        state: { text: 'hi' },
+        questions: {
+          probe: {
+            type: 'noul',
+            instructions: 'Is the text a greeting?',
+            criteria: { true: 'a greeting', false: 'not a greeting' },
+          },
+        },
+      },
     }
   }
   if (protocol === 'anthropic') {

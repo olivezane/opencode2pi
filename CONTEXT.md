@@ -128,8 +128,11 @@ _Avoid_: docs protocol, endpoint list
 **Runtime cooldown**:
 Per-session model feedback from real requests (pool.go pattern compressed to
 one model): a hard 400/401/403 hides the model from the picker for a fixed
-10-minute window; flaky statuses (429/5xx/timeout) never hide — they are
-pi-ai's retry domain (maxRetries). 403 belongs to the hard set because nothing
+10-minute window; flaky statuses (429/5xx/timeout) never hide — 429 is the
+lane's per-IP daily quota, so hiding a model for it would hide every model.
+pi-ai's own retry is what handles 429, and a `retry-after` beyond
+`maxRetryDelayMs` (30s; the lane sends ~15h) becomes a terminal error
+otherwise. 403 belongs to the hard set because nothing
 else owns it: pi-ai retries only 408/409/429/5xx, so a `FreeTierError` would
 otherwise reach the user on every request instead of hiding the model. The
 next successful reply clears the cooldown. Reacts within the session, unlike
@@ -141,11 +144,11 @@ Catalog resolution order: S1 live `GET /v1/models` → S2 models.dev pricing met
 _Avoid_: tier system
 
 **Probe ledger** (`src/free-models.json`):
-The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion. Each candidate is probed on its native protocol (chat/responses/anthropic), so a model is only "verified" if its own interface actually answers; candidates with unknown SDKs are skipped (no known endpoint), and if the capability catalog is unreachable the probe degrades to probing every candidate rather than rewriting from an incomplete picture. Classifier ids are not chat-probable — the lane answers their chat probe with a 5xx, which is indeterminate — so the ledger neither verifies nor bans them (see **Classifier lane**).
+The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 or 429 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401/410 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion. The ledger describes exactly what `/v1/models` lists: only listed ids are probed, and an id the lane drops leaves the ledger on the next run. The list over-reports (names with no service behind them), but it never under-reports. Each candidate is probed on its native protocol (chat/responses/anthropic), so a model is only "verified" if its own interface actually answers; candidates with unknown SDKs are skipped (no known endpoint), and if the capability catalog is unreachable the probe degrades to probing every listed candidate rather than rewriting from an incomplete picture. Classifier ids carry no capability-catalog protocol, so they are probed on chat and, when that answers 400 (no such model on this endpoint), again on `/v1/systemone` — 400 is the only status that means "wrong endpoint", so the retry cannot mask a broken chat model (see **Classifier lane**).
 _Avoid_: ban list, blacklist
 
 **Verified / banned**:
-A model is *verified* when a probe on its native protocol returns 200 — it may be exposed. A model is *banned* after two consecutive probe days of hard failures (400/401 only); flaky probes (timeout, 429, 5xx) never ban, and recovery moves an id back to verified at the next run.
+A model is *verified* when a probe on its native protocol returns 200 — it may be exposed. 429 verifies identically: it comes back only after the model-exists-and-is-free check passes, so it proves the id is served and free while saying nothing about the egress IP's quota, and a blocked IP lasts long enough that treating 429 as indeterminate would freeze a ban forever (2026-10-24: three CI runs in a row recorded zero 200s and the ledger stopped meaning anything). A model is *banned* after two consecutive probe days of hard failures (400/401/410 only); flaky probes (timeout, 5xx) never ban and never clear a ban, and recovery moves an id back to verified at the next run. Every candidate is probed on every run: `/v1/models` names ids with no service behind them, so a 429 on one id says nothing about the next.
 _Avoid_: blocked (reserved: upstream 401s on paid models are not "banned", they are not free)
 
 **Free-set rotation**:
