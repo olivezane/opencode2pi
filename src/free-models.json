@@ -17,10 +17,6 @@
       "verified": "2026-10-15"
     },
     {
-      "id": "exo-free",
-      "verified": "2026-10-07"
-    },
-    {
       "id": "flint-40b-free",
       "verified": "2026-10-22"
     },
@@ -35,18 +31,6 @@
     {
       "id": "mimo-v2.6-flash-free",
       "verified": "2026-09-21"
-    },
-    {
-      "id": "minimax-m3.1-flash-free",
-      "verified": "2026-10-19"
-    },
-    {
-      "id": "muse-spark-1.2-contributor-free",
-      "verified": "2026-09-03"
-    },
-    {
-      "id": "muse-spark-1.3-contributor-free",
-      "verified": "2026-09-03"
     },
     {
       "id": "nemotron-3-ultra-free",
@@ -70,7 +54,7 @@
     {
       "id": "fledge-alpha-free",
       "firstFailed": "2026-10-08",
-      "lastCode": 401
+      "lastCode": 410
     },
     {
       "id": "hy3-free",
@@ -105,7 +89,7 @@
     {
       "id": "mimo-v2.5-free",
       "firstFailed": "2026-10-07",
-      "lastCode": 401
+      "lastCode": 410
     },
     {
       "id": "space-bunny-free",
@@ -123,5 +107,26 @@
       "lastCode": 400
     }
   ],
-  "pending": []
+  "pending": [
+    {
+      "id": "exo-free",
+      "firstFailed": "2026-10-24",
+      "lastCode": 410
+    },
+    {
+      "id": "minimax-m3.1-flash-free",
+      "firstFailed": "2026-10-24",
+      "lastCode": 410
+    },
+    {
+      "id": "muse-spark-1.2-contributor-free",
+      "firstFailed": "2026-10-24",
+      "lastCode": 410
+    },
+    {
+      "id": "muse-spark-1.3-contributor-free",
+      "firstFailed": "2026-10-24",
+      "lastCode": 410
+    }
+  ]
 }
