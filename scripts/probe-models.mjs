@@ -9,7 +9,7 @@
  *
  * Policy (grilled 2026-09-01, see CONTEXT.md "Probe ledger"):
  *   - verified:  probe answered 200 today -> exposed (static bootstrap + live)
- *   - pending:   hard-failed once (400/401) -> recorded, still exposed via
+ *   - pending:   hard-failed once (400/401/410) -> recorded, still exposed via
  *                live metadata; promoted to banned if it fails again on a
  *                later day
  *   - unavailable (banned): hard-failed on two consecutive days -> excluded
@@ -42,9 +42,13 @@ const ANONYMOUS = 'public'
 const PROBE_SPACING_MS = 8000
 const PROBE_TIMEOUT_MS = 30000
 const MAX_TOKENS = 4
-// Only 4xx semantics (id rejected / not in the free set) count as "hard".
-// 5xx are transient (edge node, load, maintenance) and must never ban.
-const HARD_CODES = new Set([400, 401])
+// Only 4xx semantics (id rejected / not in the free set / model retired) count
+// as "hard". 5xx are transient (edge node, load, maintenance) and must never
+// ban. 410 ModelDeprecated is the definitive "this model is gone" answer: at
+// the 2026-10-23 audit seven ledger-verified ids had left /v1/models and were
+// answering 410, but 410 was treated as indeterminate, so they stayed verified
+// (and therefore in the S3 static picker) forever.
+const HARD_CODES = new Set([400, 401, 410])
 
 const today = () => new Date().toISOString().slice(0, 10)
 // Canonical session shape: the free tier rejects anything else with 403.
