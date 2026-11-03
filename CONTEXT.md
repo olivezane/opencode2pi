@@ -104,22 +104,13 @@ real per-model limits (`limit.context`/`limit.output`), reasoning flag and
 input modalities, which the picker uses in preference to models.dev — the
 source that declares the protocol also declares the limits, so the two can
 never disagree. Unknown SDKs are marked unsupported and excluded — no endpoint
-mapping exists; the endpoint documentation below may still resolve them.
+mapping exists, and nothing else declares one.
 Probing decides whether the lane actually serves a model; a routeable model
 the lane rejects (400/401/403) is hidden by the runtime cooldown, then banned
 by the probe ledger. Refreshes on the same 24h cadence as models.dev; while
 unavailable the catalog degrades to no-filter (today's behavior) rather than
 hiding models on a guess.
 _Avoid_: protocol list, native protocol (reserved context)
-
-**Endpoint documentation**:
-OpenCode's published endpoint table (`zen.mdx`). Each row names a model and
-the `/v1/...` endpoint it is served on, which is the ground truth when the
-capability catalog's SDK choice is missing or too generic. Documented models
-become routeable; rows whose endpoint has no pi-ai layer (the Gemini
-`/v1/models/<id>` route) are ignored. Fetched alongside the capability
-catalog, best effort.
-_Avoid_: docs protocol, endpoint list
 
 **Runtime cooldown**:
 Per-session model feedback from real requests (pool.go pattern compressed to

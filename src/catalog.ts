@@ -24,13 +24,6 @@ export const ZEN_BASE_URL = 'https://opencode.ai/inference'
  */
 export const CAPABILITIES_URL = 'https://models.opencode.ai/api.json'
 
-/**
- * OpenCode's published endpoint table (zen.mdx). The capability catalog's SDK
- * choice can hide the real endpoint; the documentation states it per model.
- */
-export const DOCS_URL =
-  'https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/web/src/content/docs/zen.mdx'
-
 /** Slow-moving data (capability catalog): refresh daily. */
 const DAILY_REFRESH_MS = 24 * 60 * 60 * 1000
 
@@ -141,66 +134,6 @@ export function decodeZenCapabilities(data: unknown): ZenCapabilities {
     }
   }
   return { protocols, unsupported, metadata }
-}
-
-/**
- * Published endpoint table rows: `| Name | model-id | `.../v1/<endpoint>` | ...`
- * The cell before an endpoint URL is the model id. Endpoints without a mapped
- * pi-ai layer (e.g. `/v1/models/<id>`, the Gemini route) are ignored, so the
- * table can only fill gaps, never invent a route.
- */
-export function decodeProtocolDocs(markdown: string): Map<string, ZenProtocol> {
-  const found = new Map<string, ZenProtocol>()
-  for (const line of markdown.split('\n')) {
-    if (!line.includes('|')) continue
-    const cells = line.split('|').map((cell) => cell.trim().replace(/^`+|`+$/g, '').trim())
-    for (let index = 1; index < cells.length; index += 1) {
-      const endpoint = cells[index] ?? ''
-      const match = /\/v1\/(chat\/completions|responses|messages)$/.exec(endpoint)
-      if (!match) continue
-      const modelId = cells[index - 1] ?? ''
-      if (modelId === '' || /[\s`|]/.test(modelId)) continue
-      const protocol = DOC_PROTOCOLS[match[1] ?? '']
-      if (protocol) found.set(modelId, protocol)
-    }
-  }
-  return found
-}
-
-const DOC_PROTOCOLS: Record<string, ZenProtocol> = {
-  'chat/completions': 'chat',
-  responses: 'responses',
-  messages: 'anthropic',
-}
-
-/** Documented endpoints complete the catalog: a documented model is routeable. */
-export function mergeProtocolDocs(
-  capabilities: ZenCapabilities,
-  documented: Map<string, ZenProtocol>,
-): ZenCapabilities {
-  if (documented.size === 0) return capabilities
-  const protocols = new Map(capabilities.protocols)
-  const unsupported = new Set(capabilities.unsupported)
-  for (const [modelId, protocol] of documented) {
-    protocols.set(modelId, protocol)
-    unsupported.delete(modelId)
-  }
-  return { protocols, unsupported, metadata: capabilities.metadata }
-}
-
-/** Fetch the published endpoint table (best effort: docs are a supplement). */
-export async function fetchZenProtocolDocs(
-  docsUrl: string,
-  fetchImpl: typeof fetch,
-  userAgent: string,
-): Promise<Map<string, ZenProtocol>> {
-  const response = await withTimeout(
-    fetchImpl(docsUrl, { headers: { accept: 'text/plain, text/markdown, */*', 'user-agent': userAgent } }),
-  )
-  if (!response.ok) throw new Error(`endpoint documentation returned HTTP ${response.status}`)
-  const documented = decodeProtocolDocs(await response.text())
-  if (documented.size === 0) throw new Error('endpoint documentation returned no endpoint rows')
-  return documented
 }
 
 /** S2-catalog: fetchProtocolCapabilities with the CLI disguise headers. */
@@ -384,8 +317,6 @@ export interface CatalogOptions {
   metadataUrl?: string
   /** OpenCode capability catalog override for tests. */
   capabilitiesUrl?: string
-  /** OpenCode endpoint documentation override for tests. */
-  docsUrl?: string
   fetchImpl?: typeof fetch
   now?: () => number
   /** Observability hook: fired after every refresh round (start + interval). */
@@ -427,7 +358,6 @@ export class ModelCatalog {
   #zenBaseUrl: string
   #metadataUrl: string
   #capabilitiesUrl: string
-  #docsUrl: string
   #fetch: typeof fetch
   #now: () => number
   #timer: NodeJS.Timeout | null = null
@@ -451,7 +381,6 @@ export class ModelCatalog {
     this.#zenBaseUrl = options.zenBaseUrl ?? ZEN_BASE_URL
     this.#metadataUrl = options.metadataUrl ?? 'https://models.dev/api.json'
     this.#capabilitiesUrl = options.capabilitiesUrl ?? CAPABILITIES_URL
-    this.#docsUrl = options.docsUrl ?? DOCS_URL
     this.#fetch = options.fetchImpl ?? fetch
     this.#now = options.now ?? Date.now
     this.#onRefresh = options.onRefresh
@@ -503,16 +432,13 @@ export class ModelCatalog {
 
   /**
    * Native protocols refresh on their own 24h cadence (the SDK choice changes
-   * slowly). The published endpoint table is fetched alongside and can fill in
-   * models the catalog does not declare; a docs failure never invalidates the
-   * catalog.
+   * slowly). The capability catalog is the only protocol source: OpenCode's
+   * published endpoint table is gone, and models.dev carries no endpoint.
    */
   async refreshCapabilities(): Promise<void> {
     if (this.#capsFetchedAt !== 0 && this.#now() - this.#capsFetchedAt < DAILY_REFRESH_MS) return
     try {
-      const capabilities = await fetchZenCapabilities(this.#capabilitiesUrl, this.#fetch, opencodeUserAgent())
-      const documented = await settledOrNull(fetchZenProtocolDocs(this.#docsUrl, this.#fetch, opencodeUserAgent()))
-      this.#capabilities = documented ? mergeProtocolDocs(capabilities, documented) : capabilities
+      this.#capabilities = await fetchZenCapabilities(this.#capabilitiesUrl, this.#fetch, opencodeUserAgent())
       this.#capsFetchedAt = this.#now()
     } catch {
       // unknown protocol states stay exposed: degrade to no-filter instead of hiding

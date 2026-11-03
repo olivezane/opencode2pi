@@ -110,7 +110,8 @@ https://opencode.ai/inference/openai/v1   ← Authorization: Bearer public
   models.dev (zero here).
 - **Protocol hosts** — each wire protocol on the host upstream declares:
   `/inference/openai/v1` (chat, responses), `/inference/anthropic`,
-  `/inference/systemone/v1` (classifier probe only).
+  `/inference/systemone/v1` (classifier probe only). The capability catalog is
+  the only protocol source; models.dev carries none.
 
 ## Health & troubleshooting
 

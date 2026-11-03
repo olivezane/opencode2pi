@@ -99,6 +99,7 @@ https://opencode.ai/inference/openai/v1   ← Authorization: Bearer public
   价格始终来自 models.dev（此处为 0）。
 - **协议主机**——每种协议走上游声明的独立主机：`/inference/openai/v1`
   （chat、responses）、`/inference/anthropic`、`/inference/systemone/v1`（仅探针用）。
+  协议映射只来自 capability catalog，models.dev 不提供。
 
 ## 健康与排障
 

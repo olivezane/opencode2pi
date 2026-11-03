@@ -2,14 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   decodeModelsDev,
-  decodeProtocolDocs,
   decodeZenCapabilities,
   decide,
   fetchZenModels,
   fetchZenCapabilities,
   isFreeModel,
   isRouteable,
-  mergeProtocolDocs,
   ModelCatalog,
   protocolForSdk,
 } from '../src/catalog.ts'
@@ -312,35 +310,6 @@ test('decodeZenCapabilities carries real limits and modalities per model', () =>
     reasoning: false,
     image: false,
   })
-})
-
-test('decodeProtocolDocs reads the published endpoint table', () => {
-  const markdown = [
-    '| Model | Model ID | Endpoint | AI SDK Package |',
-    '| ----- | -------- | -------- | -------------- |',
-    '| Claude | claude-fable-5 | `https://opencode.ai/inference/v1/messages` | `@ai-sdk/anthropic` |',
-    '| GPT | gpt-6-astra | `https://opencode.ai/inference/v1/responses` | `@ai-sdk/openai` |',
-    '| DeepSeek | deepseek-v4-pro | `https://opencode.ai/inference/v1/chat/completions` | `@ai-sdk/openai-compatible` |',
-    // no pi-ai layer: ignored, not invented
-    '| Gemini | gemini-3.1-pro | `https://opencode.ai/inference/v1/models/gemini-3.1-pro` | `@ai-sdk/google` |',
-  ].join('\n')
-  const documented = decodeProtocolDocs(markdown)
-  assert.deepEqual([...documented], [
-    ['claude-fable-5', 'anthropic'],
-    ['gpt-6-astra', 'responses'],
-    ['deepseek-v4-pro', 'chat'],
-  ])
-  assert.equal(documented.has('gemini-3.1-pro'), false, 'the Gemini route has no pi-ai layer')
-  assert.equal(decodeProtocolDocs('# no table here').size, 0)
-})
-
-test('documented endpoints complete the catalog and clear unknown-SDK hiding', () => {
-  const caps = decodeZenCapabilities(capabilityBody)
-  assert.ok(!isRouteable(caps, 'weird-free'), 'unknown SDK starts hidden')
-  const merged = mergeProtocolDocs(caps, new Map([['weird-free', 'chat']]))
-  assert.ok(isRouteable(merged, 'weird-free'), 'a documented endpoint makes it routeable')
-  assert.equal(merged.protocols.get('weird-free'), 'chat')
-  assert.equal(isRouteable(caps, 'weird-free'), false, 'the source object is untouched')
 })
 
 test('reportFailure hard codes start a cooldown that hides the model, then it returns', async () => {
