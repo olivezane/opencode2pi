@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import type { CapabilityMeta } from '../src/catalog.ts'
-import { PROVIDER_ID, ZEN_V1, CLASSIFIER_API, decodeModelsDevMeta, toPiClassifiers, toPiModels } from '../src/models.ts'
+import { PROVIDER_ID, ZEN_OPENAI, ZEN_ANTHROPIC, decodeModelsDevMeta, toPiModels } from '../src/models.ts'
 
 // Real models.dev api.json shape (opencode section), trimmed.
 const payload = {
@@ -78,8 +78,8 @@ test('toPiModels dispatches the pi api layer by native protocol', () => {
   assert.equal(models.find((m) => m.id === 'a-free')?.api, 'anthropic-messages')
   assert.equal(models.find((m) => m.id === 'c-free')?.api, 'openai-completions', 'unknown protocol defaults to chat')
   // the Anthropic SDK appends /v1/messages itself, so its baseUrl is the host root
-  assert.equal(models.find((m) => m.id === 'a-free')?.baseUrl, 'https://opencode.ai/inference')
-  assert.equal(models.find((m) => m.id === 'c-free')?.baseUrl, 'https://opencode.ai/inference/v1')
+  assert.equal(models.find((m) => m.id === 'a-free')?.baseUrl, 'https://opencode.ai/inference/anthropic')
+  assert.equal(models.find((m) => m.id === 'c-free')?.baseUrl, 'https://opencode.ai/inference/openai/v1')
 })
 
 test('toPiModels builds complete pi models, defaulting what metadata lacks', () => {
@@ -92,8 +92,8 @@ test('toPiModels builds complete pi models, defaulting what metadata lacks', () 
   assert.equal(qwen.name, 'Qwen3 Coder Next')
   assert.equal(qwen.api, 'openai-completions')
   assert.equal(qwen.provider, PROVIDER_ID)
-  assert.equal(qwen.baseUrl, ZEN_V1)
-  assert.equal(qwen.baseUrl, 'https://opencode.ai/inference/v1')
+  assert.equal(qwen.baseUrl, ZEN_OPENAI)
+  assert.equal(qwen.baseUrl, 'https://opencode.ai/inference/openai/v1')
   assert.equal(qwen.reasoning, true)
   assert.deepEqual(qwen.input, ['text', 'image'])
   assert.deepEqual(qwen.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
@@ -150,25 +150,9 @@ test('toPiModels incorporates builtin models matching /login behavior', () => {
   assert.equal(mimo.name, 'MiMo-V2.6-Flash Free')
 })
 
-test('toPiClassifiers serves the builtin Zen classifier on this provider', () => {
-  const classifiers = toPiClassifiers(['jev-1.13-free', 'big-pickle', 'mystery-free'])
-  assert.equal(classifiers.length, 1, 'only ids the builtin catalog declares as classifiers survive')
-
-  const jev = classifiers[0]!
-  assert.equal(jev.id, 'jev-1.13-free')
-  assert.equal(jev.type, 'classifier')
-  assert.equal(jev.api, CLASSIFIER_API)
-  assert.equal(jev.api, 'typesafe-system-one')
-  assert.equal(jev.provider, PROVIDER_ID)
-  // The builtin entry pins its own baseUrl, which this package does not own.
-  // (The SystemOne classifier lane was unreachable upstream on both hosts
-  // when the anonymous lane moved, so it is not re-homed like the chat models.)
-  // pi 1.x moved the builtin from the retired `/zen/v1` to `/inference/v1`.
-  assert.equal(jev.baseUrl, 'https://opencode.ai/inference/v1')
-  assert.equal(jev.contextWindow, 32000)
-  assert.deepEqual(jev.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
-
-  // Classifier ids are not chat models: they must never reach the chat list.
+test('classifier ids never reach the chat list', () => {
+  // Zen's catalogs list no classifier id, so none is ever registered; the guard
+  // only matters if one appears in the live list.
   assert.deepEqual(
     toPiModels(['jev-1.13-free', 'c-free'], new Map()).map((model) => model.id),
     ['c-free'],

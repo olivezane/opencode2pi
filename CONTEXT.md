@@ -78,24 +78,20 @@ _Avoid_: session seed
 
 **Catalog**:
 The set of models this package exposes in pi's model picker. Decided by the
-fallback chain below; lives in `ModelCatalog`. Classifier models ride along in
-the same id list (see **Classifier lane**), but they are not chat models, so
-they never reach the picker.
+fallback chain below; lives in `ModelCatalog`.
 _Avoid_: model list (except for the raw `/v1/models` response)
 
 **Classifier lane**:
-Zen's second lane: classification models (`jev-1.13`, `jev-1.13-free`) served
-over TypeSafe's System One protocol at `/inference/v1/systemone` — not chat
-completions. They are also a second pi *model type* (`type: "classifier"`), so
-they are registered as classifiers and never as chat models, reachable only
-through pi's classifier API (`models.classify`, codemode) — the picker never
-shows them. The wire implementation is pi's builtin `opencode` classifier,
-borrowed through `providers/all` rather than reimplemented: pi's extension
-loader does not alias `api/*` subpaths, so the System One factory is not
-importable from a published package. Requests need no disguise headers (the
-lane answers a bare `Bearer public` request), and the runtime cooldown hides
-the classifier on a hard 400/401/403 like any other model.
-_Avoid_: jev support, classifier model type
+Zen's legacy System One lane (`jev-1.13`, `jev-1.13-free`), served at
+`/inference/systemone/v1`. No Zen catalog lists a classifier id — not
+`/v1/models`, not the capability catalog, not models.dev — so this package
+registers no classifier model and offers no `models.classify()`. The lane is
+only mentioned in the probe, which retries a chat-400 candidate there so the
+ledger does not ban an id that answers on System One. `toPiModels` keeps a
+filter that drops a classifier id from the chat list in case one ever appears.
+_Revisit when_ a catalog lists a classifier id: register it as `type:
+"classifier"`, borrowing pi's builtin `opencode` System One wire layer.
+_Avoid_: jev support
 
 **Capability catalog**:
 `https://models.opencode.ai/api.json` — OpenCode's machine-readable provider
@@ -144,7 +140,7 @@ Catalog resolution order: S1 live `GET /v1/models` → S2 models.dev pricing met
 _Avoid_: tier system
 
 **Probe ledger** (`src/free-models.json`):
-The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 or 429 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401/410 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion. The ledger describes exactly what `/v1/models` lists: only listed ids are probed, and an id the lane drops leaves the ledger on the next run. The list over-reports (names with no service behind them), but it never under-reports. Each candidate is probed on its native protocol (chat/responses/anthropic), so a model is only "verified" if its own interface actually answers; candidates with unknown SDKs are skipped (no known endpoint), and if the capability catalog is unreachable the probe degrades to probing every listed candidate rather than rewriting from an incomplete picture. Classifier ids carry no capability-catalog protocol, so they are probed on chat and, when that answers 400 (no such model on this endpoint), again on `/v1/systemone` — 400 is the only status that means "wrong endpoint", so the retry cannot mask a broken chat model (see **Classifier lane**).
+The single machine-maintained data file holding the two static id lists — `verified` (ids the anonymous lane answered 200 or 429 in a real probe, with date) and `unavailable` (ids that hard-failed 400/401/410 on two different probe days, with first-failure date). Consumed by the fallback chain (S3) and the picker exclusion. The ledger describes exactly what `/v1/models` lists: only listed ids are probed, and an id the lane drops leaves the ledger on the next run. The list over-reports (names with no service behind them), but it never under-reports. Each candidate is probed on its native protocol (chat/responses/anthropic), so a model is only "verified" if its own interface actually answers; candidates with unknown SDKs are skipped (no known endpoint), and if the capability catalog is unreachable the probe degrades to probing every listed candidate rather than rewriting from an incomplete picture. Classifier ids carry no capability-catalog protocol, so they are probed on chat and, when that answers 400 (no such model on this endpoint), again on `/systemone/v1/systemone` — 400 is the only status that means "wrong endpoint", so the retry cannot mask a broken chat model (see **Classifier lane**).
 _Avoid_: ban list, blacklist
 
 **Verified / banned**:

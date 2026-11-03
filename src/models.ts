@@ -18,10 +18,13 @@ const DEFAULT_MAX_TOKENS = 32768
 const num = (value: unknown, min: number): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) && value >= min ? value : undefined
 
-export const ZEN_V1 = `${ZEN_BASE_URL.replace(/\/+$/, '')}/v1`
-
-/** The classifier wire API Zen serves: TypeSafe System One (`/inference/v1/systemone`). */
-export const CLASSIFIER_API = 'typesafe-system-one'
+/**
+ * The lane's protocol hosts. Since pi-ai 1.5 (upstream #11434) Zen serves each
+ * wire protocol on its own host instead of the shared `/inference/v1`; the
+ * shared paths still answer, but these are the ones upstream declares.
+ */
+export const ZEN_OPENAI = `${ZEN_BASE_URL.replace(/\/+$/, '')}/openai/v1`
+export const ZEN_ANTHROPIC = `${ZEN_BASE_URL.replace(/\/+$/, '')}/anthropic`
 
 /**
  * Full per-model metadata as found in the OpenCode section of models.dev
@@ -90,33 +93,22 @@ function apiCompat(protocol: ZenProtocol | undefined, api: Api) {
   return {}
 }
 
-/** The base URL a model speaks: the Anthropic SDK appends /v1/messages itself. */
+/** The host a model speaks: the Anthropic SDK appends /v1/messages itself. */
 function hostFor(api: Api): string {
-  return api === 'anthropic-messages' ? ZEN_BASE_URL : ZEN_V1
+  return api === 'anthropic-messages' ? ZEN_ANTHROPIC : ZEN_OPENAI
 }
 
-/** The builtin opencode classifier entry for an id, if the id names one. */
+/**
+ * The builtin opencode classifier entry for an id, if the id names one. Only a
+ * guard: Zen's catalogs list no classifier id, so nothing is registered as a
+ * classifier — this just keeps a stray classifier id out of the chat list.
+ */
 function builtinClassifier(id: string): ClassifierModel<ClassifierApi> | undefined {
   const get = getBuiltinClassifierModel as (
     provider: string,
     modelId: string,
   ) => ClassifierModel<ClassifierApi> | undefined
   return get('opencode', id)
-}
-
-/**
- * Build the classifier models: the builtin Zen classifier entries (they carry
- * the System One api, the builtin's own base URL — the System One
- * lane was unreachable upstream on both hosts, so it is not re-homed — and
- * their own context window), re-homed to this provider. Only ids the builtin
- * catalog declares as classifiers are accepted — any other id would need a
- * wire layer this package does not own.
- */
-export function toPiClassifiers(ids: string[]): Array<ClassifierModel<ClassifierApi>> {
-  return ids.flatMap((id) => {
-    const builtin = builtinClassifier(id)
-    return builtin ? [{ ...builtin, provider: PROVIDER_ID }] : []
-  })
 }
 
 /**
@@ -131,8 +123,7 @@ export function toPiModels(
   protocols: Map<string, ZenProtocol> = new Map(),
   capabilityMeta: Map<string, CapabilityMeta> = new Map(),
 ): Array<Model<Api>> {
-  // Classifier ids are not chat models: they only speak System One, so they
-  // belong to toPiClassifiers and must never reach the chat list.
+  // A classifier id only speaks System One, never chat completions.
   return ids.filter((id) => builtinClassifier(id) === undefined).map((id) => {
     const builtin = (getBuiltinModel as (provider: string, modelId: string) => Model<Api> | undefined)('opencode', id)
     const m = meta.get(id)

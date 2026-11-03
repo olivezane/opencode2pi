@@ -63,23 +63,23 @@ test('countsAsVerified treats a spent egress IP as proof the model is served and
 
 test('probeRequest builds the native endpoint per protocol', () => {
   const chat = probeRequest('x-free', 'chat')
-  assert.equal(chat.url, 'https://opencode.ai/inference/v1/chat/completions')
+  assert.equal(chat.url, 'https://opencode.ai/inference/openai/v1/chat/completions')
   assert.equal(chat.headers.authorization, 'Bearer public')
   assert.deepEqual(chat.body.model, 'x-free')
 
   const responses = probeRequest('x-free', 'responses')
-  assert.equal(responses.url, 'https://opencode.ai/inference/v1/responses')
+  assert.equal(responses.url, 'https://opencode.ai/inference/openai/v1/responses')
   assert.equal(responses.body.input, 'hi')
   assert.equal(responses.body.stream, true)
 
   const messages = probeRequest('x-free', 'anthropic')
-  assert.equal(messages.url, 'https://opencode.ai/inference/v1/messages')
+  assert.equal(messages.url, 'https://opencode.ai/inference/anthropic/v1/messages')
   assert.equal(messages.headers['x-api-key'], 'public')
   assert.equal(messages.headers.authorization, undefined, 'anthropic auth is x-api-key, not Bearer')
   assert.deepEqual(messages.body.messages, [{ role: 'user', content: 'hi' }])
 
   const classifier = probeRequest('x-free', 'classifier')
-  assert.equal(classifier.url, 'https://opencode.ai/inference/v1/systemone')
+  assert.equal(classifier.url, 'https://opencode.ai/inference/systemone/v1/systemone')
   assert.equal(classifier.body.state !== undefined, true, 'System One takes a state, not messages')
   assert.equal(classifier.body.questions.probe.type, 'noul', 'bool questions are noul on the wire')
 })

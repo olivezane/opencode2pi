@@ -83,7 +83,7 @@ pi 扩展 (src/index.ts) —— 注册 provider "opencode2pi"
    │    x-opencode-client, x-opencode-session, x-opencode-session-id,
    │    x-session-affinity, X-Session-Id, x-opencode-project
    ▼
-https://opencode.ai/inference/v1   ← Authorization: Bearer public
+https://opencode.ai/inference/openai/v1   ← Authorization: Bearer public
 ```
 
 - **会话关联**——session 采免费层要求的规范形状（`ses_` + 12 hex + 14 Base62）；
@@ -97,8 +97,8 @@ https://opencode.ai/inference/v1   ← Authorization: Bearer public
 - **模型元数据**——上下文窗口、输出上限、reasoning、图片输入取自 OpenCode
   capability catalog（与协议同源）→ 用于免费判定的 models.dev payload → 保守默认值。
   价格始终来自 models.dev（此处为 0）。
-- **分类器**——分类通道走 TypeSafe System One 协议（`/inference/v1/systemone`）；免费
-  分类器注册为 pi 分类器模型（非 chat，选择器不显示），经 `models.classify()` 调用。
+- **协议主机**——每种协议走上游声明的独立主机：`/inference/openai/v1`
+  （chat、responses）、`/inference/anthropic`、`/inference/systemone/v1`（仅探针用）。
 
 ## 健康与排障
 

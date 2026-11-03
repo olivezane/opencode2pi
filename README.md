@@ -37,7 +37,6 @@ Nothing to log into, nothing to host.
 - **Live catalog + fallback chain** — live upstream ∩ free-by-metadata → disk cache → verified static list
 - **Real metadata** — context windows, token limits, modalities, (zero) pricing from models.dev; honest compaction + cost tracking
 - **Proper errors** — upstream failures surface as classified pi stream errors
-- **Classifier included** — Zen free classifier (`jev-1.13-free`) registered as pi classifier model; `models.classify()` works
 
 ## Install
 
@@ -85,7 +84,7 @@ pi extension (src/index.ts) — registers provider "opencode2pi"
    │    x-opencode-client, x-opencode-session, x-opencode-session-id,
    │    x-session-affinity, X-Session-Id, x-opencode-project
    ▼
-https://opencode.ai/inference/v1   ← Authorization: Bearer public
+https://opencode.ai/inference/openai/v1   ← Authorization: Bearer public
 ```
 
 - **Session correlation** — session must be canonical OpenCode shape (`ses_` +
@@ -109,9 +108,9 @@ https://opencode.ai/inference/v1   ← Authorization: Bearer public
 - **Model metadata** — limits/reasoning/image input from OpenCode capability
   catalog → models.dev payload → conservative defaults. Pricing always from
   models.dev (zero here).
-- **Classification** — classifier lane speaks TypeSafe System One at
-  `/inference/v1/systemone`; free classifier registered as pi classifier model
-  (not chat — picker hides it), reachable via `models.classify()`.
+- **Protocol hosts** — each wire protocol on the host upstream declares:
+  `/inference/openai/v1` (chat, responses), `/inference/anthropic`,
+  `/inference/systemone/v1` (classifier probe only).
 
 ## Health & troubleshooting
 

@@ -48,7 +48,9 @@ import { readTool } from '../src/shape.ts'
 
 const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..')
 const LEDGER_PATH = resolve(ROOT, 'src/free-models.json')
-// Keyless inference moved off /zen onto its own host on 2026-10-14.
+// Keyless inference moved off /zen onto its own host on 2026-10-14. Since pi-ai
+// 1.5 Zen also gives each wire protocol its own path here (/openai/v1,
+// /anthropic, /systemone/v1); /v1/models stays on the shared one.
 const ZEN_BASE = 'https://opencode.ai/inference'
 const METADATA_URL = 'https://models.dev/api.json'
 const ANONYMOUS = 'public'
@@ -191,7 +193,7 @@ export function probeRequest(id, protocol) {
   const tools = [readTool(protocol)]
   if (protocol === 'responses') {
     return {
-      url: `${ZEN_BASE}/v1/responses`,
+      url: `${ZEN_BASE}/openai/v1/responses`,
       headers: base,
       body: { model: id, input: 'hi', stream: true, tools },
     }
@@ -200,7 +202,7 @@ export function probeRequest(id, protocol) {
     // Zen's System One lane. Its own endpoint, and a body shape of its own:
     // `state` plus questions, with the bool type spelled `noul` on the wire.
     return {
-      url: `${ZEN_BASE}/v1/systemone`,
+      url: `${ZEN_BASE}/systemone/v1/systemone`,
       headers: base,
       body: {
         model: id,
@@ -219,7 +221,7 @@ export function probeRequest(id, protocol) {
     // The lane authenticates anthropic requests via x-api-key, not Bearer
     const { authorization: _auth, ...rest } = base
     return {
-      url: `${ZEN_BASE}/v1/messages`,
+      url: `${ZEN_BASE}/anthropic/v1/messages`,
       headers: { ...rest, 'x-api-key': ANONYMOUS },
       body: {
         model: id,
@@ -231,7 +233,7 @@ export function probeRequest(id, protocol) {
     }
   }
   return {
-    url: `${ZEN_BASE}/v1/chat/completions`,
+    url: `${ZEN_BASE}/openai/v1/chat/completions`,
     headers: base,
     body: {
       model: id,
